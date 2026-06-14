@@ -1,0 +1,41 @@
+# Ghostty configuration
+# https://ghostty.org/docs/config
+
+font-size = 14
+# font-family = monospace
+
+cursor-style = block
+cursor-style-blink = true
+
+# scrollback-limit = 10000
+# smooth-scroll-duration = 200
+# preserve-scroll-on-write = false
+# allow-transparency = false
+# mouse-scroll-multiplier = 3
+
+# Shell prompt (sets PS1 inside the pod)
+# shell-prompt = user@host ~ %
+
+# Theme — any name from the Ghostty theme catalogue
+theme = TokyoNight
+
+# Manual color overrides (applied on top of any named theme)
+# background = #1a1b26
+# foreground = #c0caf5
+# cursor-color = #c0caf5
+# selection-background = #283457
+# selection-foreground = #c0caf5
+
+# Keybinds
+keybind = super+c=copy_to_clipboard
+keybind = super+v=paste_from_clipboard
+keybind = super+a=select_all
+keybind = super+k=clear_screen
+keybind = super+equal=increase_font_size:1
+keybind = super+minus=decrease_font_size:1
+keybind = super+zero=reset_font_size
+keybind = super+shift+f=toggle_fullscreen
+keybind = page_up=scroll_page_up
+keybind = page_down=scroll_page_down
+keybind = super+home=scroll_to_top
+keybind = super+end=scroll_to_bottom

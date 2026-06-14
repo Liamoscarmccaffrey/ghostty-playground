@@ -1,0 +1,1148 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>ghostty-web</title>
+    <!-- Establish cross-origin isolation (for SharedArrayBuffer) before the
+         app module runs. Must come first in <head>. -->
+    <script src="/coi-serviceworker.js"></script>
+    <style>
+      *, *::before, *::after { box-sizing: border-box; }
+
+      html, body {
+        margin: 0;
+        height: 100%;
+        background: #1a1b26;
+      }
+      body {
+        display: flex;
+        flex-direction: column;
+        font-family: system-ui, sans-serif;
+        color: #a9b1d6;
+      }
+
+      header {
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        padding: 0 12px 0 12px;
+        font-size: 13px;
+        border-bottom: 1px solid #2a2b3d;
+        flex-shrink: 0;
+        min-height: 36px;
+      }
+      #header-title { opacity: 0.8; flex-shrink: 0; }
+
+      #tab-bar {
+        display: flex;
+        align-items: stretch;
+        flex: 1;
+        gap: 0;
+        overflow-x: auto;
+        scrollbar-width: none;
+        min-height: 36px;
+      }
+      #tab-bar::-webkit-scrollbar { display: none; }
+
+      .tab-btn {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+        padding: 0 12px;
+        background: none;
+        border: none;
+        border-bottom: 2px solid transparent;
+        color: #565f89;
+        font-size: 12px;
+        font-family: inherit;
+        cursor: pointer;
+        white-space: nowrap;
+        flex-shrink: 0;
+        min-height: 36px;
+        margin-bottom: -1px;
+      }
+      .tab-btn:hover { color: #a9b1d6; }
+      .tab-btn.active { color: #c0caf5; border-bottom-color: #7aa2f7; }
+      .tab-close {
+        width: 14px;
+        height: 14px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        border-radius: 3px;
+        opacity: 0.5;
+        font-size: 14px;
+        line-height: 1;
+      }
+      .tab-close:hover { opacity: 1; background: #2a2b3d; }
+      #tab-add {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0 8px;
+        background: none;
+        border: none;
+        color: #565f89;
+        font-size: 18px;
+        cursor: pointer;
+        flex-shrink: 0;
+        line-height: 1;
+      }
+      #tab-add:hover { color: #a9b1d6; }
+
+      #main {
+        flex: 1;
+        min-height: 0;
+        display: flex;
+      }
+
+      #terminals {
+        flex: 1;
+        min-width: 0;
+        min-height: 0;
+        position: relative;
+      }
+      .terminal-instance {
+        position: absolute;
+        inset: 0;
+        display: none;
+        z-index: 1;
+      }
+      .terminal-instance.active {
+        display: block;
+      }
+
+      /* Inspector panel — fixed overlay, slides up from bottom */
+      #inspector {
+        position: fixed;
+        bottom: 0;
+        left: 0;
+        right: 0;
+        height: 40vh;
+        min-height: 240px;
+        max-height: 60vh;
+        border-top: 1px solid #2a2b3d;
+        background: #13141f;
+        display: none;
+        flex-direction: column;
+        font-size: 12px;
+        overflow-y: auto;
+        font-family: ui-monospace, 'SF Mono', monospace;
+        z-index: 500;
+      }
+      #inspector.visible { display: flex; }
+
+      #inspector h2 {
+        margin: 0;
+        padding: 7px 14px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #565f89;
+        border-bottom: 1px solid #2a2b3d;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      #insp-close {
+        background: none;
+        border: none;
+        color: #565f89;
+        cursor: pointer;
+        font-size: 16px;
+        line-height: 1;
+        padding: 0 2px;
+        font-family: inherit;
+      }
+      #insp-close:hover { color: #c0caf5; }
+
+      #inspector-body {
+        display: flex;
+        flex-direction: row;
+        flex: 1;
+        min-height: 0;
+        overflow-x: auto;
+        overflow-y: hidden;
+      }
+
+      .inspector-section {
+        padding: 0;
+        border-right: 1px solid #1e1f2e;
+        flex: 1;
+        min-width: 160px;
+        overflow-y: auto;
+      }
+      .inspector-section:last-child { border-right: none; }
+
+      .inspector-section h3 {
+        margin: 0;
+        padding: 5px 14px 4px;
+        font-size: 10px;
+        font-weight: 600;
+        color: #565f89;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        background: #0f1019;
+        border-bottom: 1px solid #1e1f2e;
+      }
+
+      .inspector-section h3.with-actions {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+      }
+
+      .inspector-section h3.with-actions .insp-actions {
+        display: flex;
+        gap: 4px;
+      }
+
+      .insp-btn {
+        background: none;
+        border: 1px solid #2a2b3d;
+        color: #565f89;
+        border-radius: 3px;
+        padding: 1px 7px;
+        font-size: 10px;
+        cursor: pointer;
+        font-family: inherit;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+      .insp-btn:hover { color: #a9b1d6; border-color: #565f89; }
+
+      .inspector-row {
+        display: flex;
+        justify-content: space-between;
+        align-items: baseline;
+        padding: 4px 14px;
+        gap: 8px;
+        border-bottom: 1px solid #161720;
+      }
+      .inspector-row:last-child { border-bottom: none; }
+
+      .inspector-row .label {
+        color: #565f89;
+        flex-shrink: 0;
+        font-size: 12px;
+      }
+      .inspector-row .value {
+        color: #c0caf5;
+        font-size: 12px;
+        text-align: right;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .color-row {
+        display: flex;
+        align-items: center;
+        padding: 5px 14px;
+        gap: 8px;
+        border-bottom: 1px solid #161720;
+      }
+      .color-row:last-child { border-bottom: none; }
+      .color-row .label { color: #565f89; font-size: 12px; flex: 1; }
+      .color-swatch-lg {
+        width: 14px;
+        height: 14px;
+        border-radius: 3px;
+        border: 1px solid rgba(255,255,255,0.1);
+        flex-shrink: 0;
+      }
+      .color-hex {
+        color: #c0caf5;
+        font-size: 12px;
+        min-width: 64px;
+        text-align: right;
+      }
+
+      .palette-grid {
+        display: grid;
+        grid-template-columns: repeat(8, 1fr);
+        gap: 3px;
+        padding: 10px 14px;
+      }
+      .palette-cell {
+        aspect-ratio: 1;
+        border-radius: 3px;
+        border: 1px solid rgba(255,255,255,0.05);
+        cursor: default;
+        position: relative;
+      }
+      .palette-cell:hover::after {
+        content: attr(title);
+        position: absolute;
+        bottom: calc(100% + 4px);
+        left: 50%;
+        transform: translateX(-50%);
+        background: #1a1b26;
+        border: 1px solid #2a2b3d;
+        color: #c0caf5;
+        font-size: 11px;
+        padding: 2px 6px;
+        border-radius: 3px;
+        white-space: nowrap;
+        pointer-events: none;
+        z-index: 100;
+      }
+
+      /* Context menu */
+      #context-menu {
+        position: fixed;
+        z-index: 1000;
+        background: #1e1f2e;
+        border: 1px solid #2a2b3d;
+        border-radius: 6px;
+        padding: 4px;
+        min-width: 200px;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.5);
+        display: none;
+        font-size: 13px;
+      }
+      #context-menu.visible { display: block; }
+
+      .menu-item {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        padding: 6px 10px;
+        border-radius: 4px;
+        cursor: pointer;
+        color: #a9b1d6;
+        user-select: none;
+      }
+      .menu-item:hover { background: #2a2b3d; color: #c0caf5; }
+      .menu-item.disabled { opacity: 0.4; pointer-events: none; }
+      .menu-item svg { flex-shrink: 0; opacity: 0.7; }
+      .menu-separator {
+        height: 1px;
+        background: #2a2b3d;
+        margin: 3px 6px;
+      }
+
+      /* Title dialog */
+      #title-dialog, #config-dialog {
+        position: fixed;
+        inset: 0;
+        z-index: 2000;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0,0,0,0.5);
+      }
+      #title-dialog.visible, #config-dialog.visible { display: flex; }
+      #title-dialog-box {
+        background: #1e1f2e;
+        border: 1px solid #2a2b3d;
+        border-radius: 8px;
+        padding: 20px;
+        width: 320px;
+        box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+      }
+      #title-dialog-box h3 {
+        margin: 0 0 14px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #c0caf5;
+      }
+      #title-input {
+        width: 100%;
+        background: #13141f;
+        border: 1px solid #2a2b3d;
+        border-radius: 4px;
+        color: #c0caf5;
+        font-size: 13px;
+        padding: 7px 10px;
+        outline: none;
+        margin-bottom: 14px;
+      }
+      #title-input:focus { border-color: #7aa2f7; }
+      #config-editor-wrap {
+        position: relative;
+        width: 100%;
+        margin-bottom: 14px;
+        border: 1px solid #2a2b3d;
+        border-radius: 4px;
+        background: #13141f;
+        min-height: 260px;
+      }
+      #config-editor-wrap:focus-within { border-color: #7aa2f7; }
+      #config-highlight, #config-editor {
+        font-family: monospace;
+        font-size: 12px;
+        line-height: 1.5;
+        padding: 8px 10px;
+        margin: 0;
+        white-space: pre-wrap;
+        word-wrap: break-word;
+        tab-size: 2;
+      }
+      #config-highlight {
+        position: absolute;
+        inset: 0;
+        pointer-events: none;
+        border: none;
+        background: none;
+        overflow: hidden;
+        box-sizing: border-box;
+        z-index: 1;
+      }
+      #config-editor {
+        position: relative;
+        display: block;
+        width: 100%;
+        min-height: 260px;
+        background: transparent;
+        border: none;
+        color: transparent;
+        caret-color: #c0caf5;
+        outline: none;
+        resize: both;
+        box-sizing: border-box;
+        z-index: 2;
+      }
+      #config-dialog-box {
+        background: #1e1f2e;
+        border: 1px solid #2a2b3d;
+        border-radius: 8px;
+        padding: 20px;
+        width: 480px;
+        max-width: calc(100vw - 48px);
+        box-shadow: 0 16px 48px rgba(0,0,0,0.6);
+      }
+      #config-dialog-box h3 {
+        margin: 0 0 14px;
+        font-size: 14px;
+        font-weight: 600;
+        color: #c0caf5;
+      }
+      /* Syntax token colours */
+      #config-highlight { color: #c0caf5; }
+      .hl-comment    { color: #565f89; }
+      .hl-property   { color: #7aa2f7; }
+      .hl-boolean    { color: #ff9e64; }
+      .hl-number     { color: #ff9e64; }
+      .hl-string     { color: #9ece6a; }
+      .hl-color      { color: #73daca; }
+      .hl-operator   { color: #89ddff; }
+      .hl-keyword    { color: #bb9af7; }
+      .hl-path       { color: #e0af68; }
+      .hl-keybind    { color: #f7768e; }
+      .dialog-buttons {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+      }
+      .dialog-btn {
+        padding: 6px 16px;
+        border-radius: 4px;
+        border: 1px solid #2a2b3d;
+        font-size: 13px;
+        cursor: pointer;
+        background: transparent;
+        color: #a9b1d6;
+      }
+      .dialog-btn:hover { background: #2a2b3d; }
+      .dialog-btn.primary {
+        background: #7aa2f7;
+        border-color: #7aa2f7;
+        color: #1a1b26;
+        font-weight: 600;
+      }
+      .dialog-btn.primary:hover { background: #89b4fa; }
+
+      /* Config panel — slides in from the right */
+      #config-panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 600px;
+        max-width: 100vw;
+        background: #1e1f2e;
+        border-left: 2px solid #7aa2f7;
+        display: none;
+        flex-direction: column;
+        z-index: 9999;
+        font-size: 13px;
+        font-family: system-ui, sans-serif;
+        color: #c0caf5;
+        box-shadow: -4px 0 24px rgba(0,0,0,0.6);
+      }
+      #config-panel.visible { display: flex; }
+
+      .cp-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        border-bottom: 1px solid #2a2b3d;
+        flex-shrink: 0;
+      }
+      .cp-title {
+        font-size: 14px;
+        font-weight: 600;
+        color: #c0caf5;
+      }
+      .cp-close {
+        background: none;
+        border: none;
+        color: #565f89;
+        font-size: 16px;
+        cursor: pointer;
+        padding: 0 2px;
+        line-height: 1;
+      }
+      .cp-close:hover { color: #c0caf5; }
+
+      .cp-body {
+        display: flex;
+        flex: 1;
+        min-height: 0;
+        overflow: hidden;
+      }
+
+      .cp-sidebar {
+        width: 130px;
+        flex-shrink: 0;
+        border-right: 1px solid #2a2b3d;
+        overflow-y: auto;
+        padding: 8px 0;
+        background: #16172a;
+      }
+      .cp-panel-btn {
+        display: block;
+        width: 100%;
+        text-align: left;
+        background: none;
+        border: none;
+        color: #a9b1d6;
+        font-size: 13px;
+        padding: 7px 14px;
+        cursor: pointer;
+        font-family: inherit;
+      }
+      .cp-panel-btn:hover { background: #1a1b2e; color: #c0caf5; }
+      .cp-panel-btn.active { background: #1e1f2e; color: #7aa2f7; font-weight: 600; }
+
+      .cp-content {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px 16px;
+      }
+
+      .cp-group {
+        margin-bottom: 20px;
+      }
+      .cp-group-title {
+        margin: 0 0 10px;
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #565f89;
+        padding-bottom: 5px;
+        border-bottom: 1px solid #1e1f2e;
+      }
+
+      .cp-row {
+        display: flex;
+        align-items: flex-start;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 6px 0;
+        border-bottom: 1px solid #161720;
+      }
+      .cp-row:last-child { border-bottom: none; }
+      .cp-row-palette {
+        display: block;
+        padding: 8px 0;
+      }
+
+      .cp-label-wrap {
+        flex: 1;
+        min-width: 0;
+      }
+      .cp-label {
+        display: block;
+        color: #c0caf5;
+        font-size: 13px;
+      }
+      .cp-note {
+        display: block;
+        color: #565f89;
+        font-size: 11px;
+        margin-top: 2px;
+        line-height: 1.4;
+      }
+
+      .cp-control {
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+      }
+
+      .cp-input {
+        background: #1e1f2e;
+        border: 1px solid #2a2b3d;
+        border-radius: 4px;
+        color: #c0caf5;
+        font-size: 12px;
+        padding: 4px 8px;
+        outline: none;
+        font-family: inherit;
+        width: 180px;
+      }
+      .cp-input:focus { border-color: #7aa2f7; }
+      .cp-input-number { width: 80px; }
+
+      .cp-select {
+        background: #1e1f2e;
+        border: 1px solid #2a2b3d;
+        border-radius: 4px;
+        color: #c0caf5;
+        font-size: 12px;
+        padding: 4px 8px;
+        outline: none;
+        font-family: inherit;
+        width: 180px;
+      }
+      .cp-select:focus { border-color: #7aa2f7; }
+
+      .cp-range-wrap {
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
+      .cp-range { width: 120px; accent-color: #7aa2f7; }
+      .cp-range-label {
+        color: #c0caf5;
+        font-size: 12px;
+        min-width: 32px;
+        text-align: right;
+        font-family: ui-monospace, monospace;
+      }
+
+      .cp-switch {
+        position: relative;
+        display: inline-block;
+        width: 36px;
+        height: 20px;
+        cursor: pointer;
+      }
+      .cp-switch input { opacity: 0; width: 0; height: 0; }
+      .cp-switch-track {
+        position: absolute;
+        inset: 0;
+        background: #2a2b3d;
+        border-radius: 20px;
+        transition: background 0.15s;
+      }
+      .cp-switch-track::before {
+        content: '';
+        position: absolute;
+        width: 14px;
+        height: 14px;
+        border-radius: 50%;
+        background: #565f89;
+        top: 3px;
+        left: 3px;
+        transition: transform 0.15s, background 0.15s;
+      }
+      .cp-switch input:checked + .cp-switch-track { background: #3d59a1; }
+      .cp-switch input:checked + .cp-switch-track::before { transform: translateX(16px); background: #7aa2f7; }
+
+      .cp-color-wrap {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .cp-color-swatch {
+        width: 28px;
+        height: 28px;
+        border: 1px solid #2a2b3d;
+        border-radius: 4px;
+        padding: 0;
+        cursor: pointer;
+        background: none;
+      }
+      .cp-color-text { width: 90px; }
+
+      .cp-palette-grid {
+        display: grid;
+        grid-template-columns: repeat(4, 1fr);
+        gap: 6px;
+      }
+      .cp-palette-cell {
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      .cp-palette-swatch {
+        width: 28px;
+        height: 28px;
+        border: 1px solid #2a2b3d;
+        border-radius: 4px;
+        padding: 0;
+        cursor: pointer;
+        flex-shrink: 0;
+      }
+      .cp-palette-name {
+        font-size: 11px;
+        color: #565f89;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      .cp-theme-wrap {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        width: 180px;
+      }
+      .cp-theme-list {
+        height: 160px;
+        width: 100%;
+      }
+
+      .cp-footer {
+        display: flex;
+        gap: 8px;
+        justify-content: flex-end;
+        padding: 10px 16px;
+        border-top: 1px solid #2a2b3d;
+        flex-shrink: 0;
+      }
+      .cp-btn {
+        padding: 6px 16px;
+        border-radius: 4px;
+        border: 1px solid #2a2b3d;
+        font-size: 13px;
+        cursor: pointer;
+        background: transparent;
+        color: #a9b1d6;
+        font-family: inherit;
+      }
+      .cp-btn:hover { background: #2a2b3d; }
+      .cp-btn-primary {
+        background: #7aa2f7;
+        border-color: #7aa2f7;
+        color: #1a1b26;
+        font-weight: 600;
+      }
+      .cp-btn-primary:hover { background: #89b4fa; }
+      .cp-row-keybinds { display: block; padding: 8px 0; }
+      .cp-keybinds-wrap { display: flex; flex-direction: column; gap: 6px; }
+      .cp-kb-row { display: flex; gap: 6px; align-items: center; }
+      .cp-kb-input { flex: 1; font-size: 11px; font-family: monospace; }
+      .cp-kb-del {
+        flex-shrink: 0;
+        background: none;
+        border: 1px solid #3d4059;
+        color: #f7768e;
+        border-radius: 4px;
+        width: 24px; height: 24px;
+        cursor: pointer;
+        font-size: 16px;
+        line-height: 1;
+        display: flex; align-items: center; justify-content: center;
+      }
+      .cp-kb-del:hover { background: #2a2b3d; }
+      .cp-kb-add { margin-top: 4px; align-self: flex-start; font-size: 12px; }
+      .cp-kb-ref-list {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 4px;
+        margin-bottom: 4px;
+      }
+      .cp-kb-ref-item {
+        font-family: ui-monospace, 'SF Mono', monospace;
+        font-size: 11px;
+        color: #7aa2f7;
+        background: #13141f;
+        border: 1px solid #2a2b3d;
+        border-radius: 3px;
+        padding: 2px 7px;
+        cursor: pointer;
+        user-select: none;
+      }
+      .cp-kb-ref-item:hover { background: #1e1f2e; border-color: #7aa2f7; }
+
+      /* About modal */
+      #about-modal {
+        position: fixed;
+        inset: 0;
+        z-index: 3000;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(0,0,0,0.7);
+      }
+      #about-modal.visible { display: flex; }
+      #about-box {
+        background: #13141f;
+        border: 1px solid #2a2b3d;
+        border-radius: 10px;
+        box-shadow: 0 24px 64px rgba(0,0,0,0.8);
+        display: flex;
+        flex-direction: column;
+        align-items: stretch;
+        width: 560px;
+        max-width: calc(100vw - 32px);
+        max-height: calc(100vh - 64px);
+        overflow: hidden;
+      }
+      #about-anim-wrap {
+        background: #0d0e18;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 16px 0 8px;
+        overflow: hidden;
+      }
+      #about-anim-term {
+        width: 100%;
+        height: 220px;
+      }
+      #about-body {
+        padding: 20px 24px 24px;
+        display: flex;
+        flex-direction: column;
+        gap: 12px;
+      }
+      #about-title {
+        font-size: 18px;
+        font-weight: 700;
+        color: #c0caf5;
+        letter-spacing: -0.01em;
+      }
+      #about-desc {
+        font-size: 13px;
+        color: #a9b1d6;
+        line-height: 1.6;
+      }
+      #about-meta {
+        font-size: 12px;
+        color: #565f89;
+        font-family: ui-monospace, 'SF Mono', monospace;
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+      }
+      #about-close-btn {
+        align-self: flex-end;
+        padding: 6px 18px;
+        border-radius: 4px;
+        border: 1px solid #2a2b3d;
+        font-size: 13px;
+        cursor: pointer;
+        background: transparent;
+        color: #a9b1d6;
+        font-family: inherit;
+        margin-top: 4px;
+      }
+      #about-close-btn:hover { background: #2a2b3d; }
+
+      /* Theme browser */
+      .cp-theme-browser { display: flex; flex-direction: column; width: 100%; }
+      .cp-tb-category { margin-bottom: 16px; }
+      .cp-tb-cat-head {
+        font-size: 11px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #565f89;
+        padding-bottom: 6px;
+        border-bottom: 1px solid #1e1f2e;
+        margin-bottom: 8px;
+      }
+      .cp-tb-grid {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 6px;
+      }
+      .cp-tb-chip {
+        display: flex;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 4px;
+        padding: 6px 8px;
+        background: #1a1b2e;
+        border: 1px solid #2a2b3d;
+        border-radius: 5px;
+        cursor: pointer;
+        transition: border-color 0.1s;
+        min-width: 110px;
+      }
+      .cp-tb-chip:hover { border-color: #565f89; }
+      .cp-tb-chip.active { border-color: #7aa2f7; background: #1e2045; }
+      .cp-tb-swatches { display: flex; gap: 2px; }
+      .cp-tb-swatch {
+        width: 10px;
+        height: 10px;
+        border-radius: 2px;
+        border: 1px solid rgba(255,255,255,0.08);
+      }
+      .cp-tb-label {
+        font-size: 11px;
+        color: #a9b1d6;
+        white-space: nowrap;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        max-width: 120px;
+      }
+      .cp-tb-chip.active .cp-tb-label { color: #c0caf5; }
+
+      /* Keybind reference panel */
+      #keybind-ref-panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 400px;
+        max-width: 100vw;
+        background: #1e1f2e;
+        border-left: 2px solid #7aa2f7;
+        display: none;
+        flex-direction: column;
+        z-index: 9998;
+        font-size: 13px;
+        font-family: system-ui, sans-serif;
+        color: #c0caf5;
+        box-shadow: -4px 0 24px rgba(0,0,0,0.6);
+      }
+      #keybind-ref-panel.visible { display: flex; }
+      #keybind-ref-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        padding: 10px 16px;
+        border-bottom: 1px solid #2a2b3d;
+        flex-shrink: 0;
+      }
+      #keybind-ref-header span {
+        font-size: 14px;
+        font-weight: 600;
+        color: #c0caf5;
+      }
+      #keybind-ref-close {
+        background: none;
+        border: none;
+        color: #565f89;
+        font-size: 16px;
+        cursor: pointer;
+        padding: 0 2px;
+        line-height: 1;
+      }
+      #keybind-ref-close:hover { color: #c0caf5; }
+      #keybind-ref-body {
+        flex: 1;
+        overflow-y: auto;
+        padding: 12px 16px;
+      }
+      .kb-ref-empty {
+        color: #565f89;
+        font-size: 13px;
+        padding: 16px 0;
+      }
+      .kb-ref-row {
+        display: flex;
+        align-items: baseline;
+        justify-content: space-between;
+        gap: 12px;
+        padding: 6px 0;
+        border-bottom: 1px solid #161720;
+        font-family: ui-monospace, 'SF Mono', monospace;
+        font-size: 12px;
+      }
+      .kb-ref-row:last-child { border-bottom: none; }
+      .kb-ref-combo {
+        color: #7aa2f7;
+        white-space: nowrap;
+        flex-shrink: 0;
+      }
+      .kb-ref-action {
+        color: #a9b1d6;
+        text-align: right;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+      .kb-ref-action-name {
+        color: #c0caf5;
+        flex: 1;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <span id="header-title">ghostty-web</span>
+      <div id="tab-bar"></div>
+    </header>
+
+    <div id="main">
+      <div id="terminals"></div>
+      <div id="inspector">
+        <h2>Terminal Inspector <button id="insp-close">&#x2715;</button></h2>
+        <div id="inspector-body">
+
+        <div class="inspector-section">
+          <h3>Terminal</h3>
+          <div class="inspector-row"><span class="label">Grid</span><span class="value" id="insp-grid">—</span></div>
+          <div class="inspector-row"><span class="label">Scroll Region</span><span class="value" id="insp-scroll-region">—</span></div>
+          <div class="inspector-row"><span class="label">Buffer</span><span class="value" id="insp-buffer-type">—</span></div>
+          <div class="inspector-row"><span class="label">Lines (total)</span><span class="value" id="insp-buffer-lines">—</span></div>
+          <div class="inspector-row"><span class="label">Viewport Y</span><span class="value" id="insp-viewport-y">—</span></div>
+        </div>
+
+        <div class="inspector-section">
+          <h3>Cursor</h3>
+          <div class="inspector-row"><span class="label">Position</span><span class="value" id="insp-cursor">—</span></div>
+          <div class="inspector-row"><span class="label">Style</span><span class="value" id="insp-cursor-style">—</span></div>
+          <div class="inspector-row"><span class="label">Visible</span><span class="value" id="insp-cursor-visible">—</span></div>
+          <div class="inspector-row"><span class="label">Blink</span><span class="value" id="insp-cursor-blink">—</span></div>
+        </div>
+
+        <div class="inspector-section">
+          <h3>Mouse</h3>
+          <div class="inspector-row"><span class="label">Tracking</span><span class="value" id="insp-mouse-tracking">—</span></div>
+          <div class="inspector-row"><span class="label">SGR Mode</span><span class="value" id="insp-mouse-sgr">—</span></div>
+          <div class="inspector-row"><span class="label">Bracketed Paste</span><span class="value" id="insp-bracketed-paste">—</span></div>
+          <div class="inspector-row"><span class="label">Focus Events</span><span class="value" id="insp-focus-events">—</span></div>
+        </div>
+
+        <div class="inspector-section">
+          <h3>Modes</h3>
+          <div class="inspector-row"><span class="label">Auto-wrap (DECAWM)</span><span class="value" id="insp-mode-decawm">—</span></div>
+          <div class="inspector-row"><span class="label">Insert (IRM)</span><span class="value" id="insp-mode-irm">—</span></div>
+          <div class="inspector-row"><span class="label">Line feed (LNM)</span><span class="value" id="insp-mode-lnm">—</span></div>
+          <div class="inspector-row"><span class="label">Origin (DECOM)</span><span class="value" id="insp-mode-decom">—</span></div>
+          <div class="inspector-row"><span class="label">Alt screen</span><span class="value" id="insp-mode-altscreen">—</span></div>
+        </div>
+
+        <div class="inspector-section">
+          <h3>Colors</h3>
+          <div class="color-row"><span class="label">Background</span><div class="color-swatch-lg" id="insp-bg-swatch"></div><span class="color-hex" id="insp-bg">—</span></div>
+          <div class="color-row"><span class="label">Foreground</span><div class="color-swatch-lg" id="insp-fg-swatch"></div><span class="color-hex" id="insp-fg">—</span></div>
+          <div class="color-row"><span class="label">Cursor</span><div class="color-swatch-lg" id="insp-cursor-color-swatch"></div><span class="color-hex" id="insp-cursor-color">—</span></div>
+          <div class="color-row"><span class="label">Selection BG</span><div class="color-swatch-lg" id="insp-sel-bg-swatch"></div><span class="color-hex" id="insp-sel-bg">—</span></div>
+        </div>
+
+        <div class="inspector-section">
+          <h3>Palette (16 colors)</h3>
+          <div class="palette-grid" id="insp-palette"></div>
+        </div>
+
+        <div class="inspector-section">
+          <h3 class="with-actions">
+            Terminal IO
+            <span class="insp-actions">
+              <button id="insp-io-pause" class="insp-btn">Pause</button>
+              <button id="insp-io-clear" class="insp-btn">Clear</button>
+            </span>
+          </h3>
+          <div id="insp-io-log" style="font-family:ui-monospace,'SF Mono',monospace;font-size:11px;color:#565f89;overflow-y:auto;padding:6px 14px;flex:1;"></div>
+        </div>
+
+        </div><!-- /inspector-body -->
+      </div>
+    </div>
+
+    <!-- Context menu -->
+    <div id="context-menu">
+      <div class="menu-item" id="menu-copy">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1"/></svg>
+        Copy
+      </div>
+      <div class="menu-item" id="menu-paste">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 012 2v14a2 2 0 01-2 2H6a2 2 0 01-2-2V6a2 2 0 012-2h2"/><rect x="8" y="2" width="8" height="4" rx="1"/></svg>
+        Paste
+      </div>
+      <div class="menu-separator"></div>
+      <div class="menu-item" id="menu-reset">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12a9 9 0 109-9M3 3v6h6"/></svg>
+        Reset Terminal
+      </div>
+      <div class="menu-item" id="menu-inspector">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35M11 8v6M8 11h6"/></svg>
+        <span id="menu-inspector-label">Open Inspector</span>
+      </div>
+      <div class="menu-item" id="menu-config">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.07 4.93a10 10 0 010 14.14M4.93 4.93a10 10 0 000 14.14"/></svg>
+        Edit Config…
+      </div>
+      <div class="menu-item" id="menu-config-panel">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18M3 9h6M3 15h6"/></svg>
+        Config Panel…
+      </div>
+      <div class="menu-separator"></div>
+      <div class="menu-item" id="menu-about">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+        About…
+      </div>
+      <div class="menu-separator"></div>
+      <div class="menu-item" id="menu-title">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
+        Change Title…
+      </div>
+    </div>
+
+    <!-- Title dialog -->
+    <div id="title-dialog">
+      <div id="title-dialog-box">
+        <h3>Change Terminal Title</h3>
+        <input id="title-input" type="text" placeholder="Terminal title" spellcheck="false" />
+        <div class="dialog-buttons">
+          <button class="dialog-btn" id="title-cancel">Cancel</button>
+          <button class="dialog-btn primary" id="title-confirm">Set Title</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Config editor dialog -->
+    <div id="config-dialog">
+      <div id="config-dialog-box">
+        <h3>Edit Config</h3>
+        <div id="config-editor-wrap">
+          <div id="config-highlight" aria-hidden="true"></div>
+          <textarea id="config-editor" spellcheck="false"></textarea>
+        </div>
+        <div class="dialog-buttons">
+          <button class="dialog-btn" id="config-cancel">Cancel</button>
+          <button class="dialog-btn primary" id="config-apply">Apply</button>
+        </div>
+      </div>
+    </div>
+
+
+    <!-- About modal -->
+    <div id="about-modal">
+      <div id="about-box">
+        <div id="about-anim-wrap">
+          <div id="about-anim-term"></div>
+        </div>
+        <div id="about-body">
+          <div id="about-title">ghostty-web</div>
+          <div id="about-desc">A Ghostty terminal emulator running entirely in the browser, powered by BrowserPod and the Ghostty WASM engine. Supports Ghostty config format, themes, keybindings, multi-tab sessions, and persistent filesystem storage.</div>
+          <div id="about-meta">
+            <span>engine: @crunchloop/ghostty-web</span>
+            <span>runtime: @leaningtech/browserpod</span>
+          </div>
+          <button id="about-close-btn">Close</button>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>
