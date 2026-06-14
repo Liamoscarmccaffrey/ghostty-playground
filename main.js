@@ -1,9 +1,10 @@
 import { init, Terminal, FitAddon } from '@crunchloop/ghostty-web';
 import { BrowserPod } from '@leaningtech/browserpod';
-import { GHOST_FRAMES, FRAME_WIDTH, FRAME_HEIGHT } from './ghost-animation.js';
+import { GHOST_FRAMES, FRAME_WIDTH, FRAME_HEIGHT } from './src/ghost-animation.js';
+import { setupGame } from './src/extras.js';
 import bundledConfigText from './ghostty-config?raw';
-import { initHighlighter, highlight } from './config-highlight.js';
-import { createConfigPanel } from './config-panel.js';
+import { initHighlighter, highlight } from './src/config-highlight.js';
+import { createConfigPanel } from './src/config-panel.js';
 // Reset saved config if the bundled config has changed (e.g. after an update).
 if (localStorage.getItem('ghostty-config-hash') !== btoa(bundledConfigText.slice(0, 64))) {
   localStorage.removeItem('ghostty-config');
@@ -654,6 +655,7 @@ function setupContextMenu(term, configOpts, cols, rows, refs, openConfigDialog, 
 
       // Redirect outputRef so the existing podTerm.onOutput closure writes to the new terminal
       outputRef.write = (buf) => term.write(toCrlf(buf));
+      refs.wrapOutputRef?.(outputRef);
 
       if (podTerm) {
         term.onData((data) => { if (!refs.readonlyMode) podTerm.readData(translateKittySequences(data)); });
@@ -983,7 +985,7 @@ async function main() {
   measureTerm.dispose();
   terminalsEl.removeChild(measureEl);
 
-  const refs = { podTerm: null, openConfigDialog: null, toggleInspector: null, readonlyMode: false, bgOpaque: false, toggleBgOpacity: null };
+  const refs = { podTerm: null, openConfigDialog: null, toggleInspector: null, readonlyMode: false, bgOpaque: false, toggleBgOpacity: null, wrapOutputRef: null };
 
   // Tab state
   const tabList = [];  // [{ id, termEl, term, fit, podTerm, btn }]
@@ -1114,6 +1116,7 @@ async function main() {
     }
 
     const outputRef = { write: (buf) => term.write(toCrlf(buf)) };
+    wrapOutputRef(outputRef);
 
     const podTerm = await pod.createCustomTerminal({
       cols: term.cols,
@@ -1190,11 +1193,37 @@ async function main() {
 
   const { openAbout } = setupAboutModal(configOpts);
 
+  const { openGame } = setupGame();
+  refs.wrapOutputRef = wrapOutputRef;
+
+  // Detect "ghostty-gets-even" in PTY output across all tabs.
+  // Each outputRef.write is wrapped so we can scan decoded bytes without altering them.
+  const TRIGGER = 'ghostty-gets-even';
+  let triggerBuf = '';
+  function wrapOutputRef(outputRef) {
+    const orig = outputRef.write.bind(outputRef);
+    outputRef.write = (buf) => {
+      orig(buf);
+      const text = typeof buf === 'string' ? buf : new TextDecoder().decode(
+        new Uint8Array(buf instanceof Uint8Array ? buf : new Uint8Array(buf))
+      );
+      triggerBuf += text;
+      if (triggerBuf.length > TRIGGER.length * 2) {
+        triggerBuf = triggerBuf.slice(-TRIGGER.length * 2);
+      }
+      if (triggerBuf.includes(TRIGGER)) {
+        triggerBuf = '';
+        openGame();
+      }
+    };
+  }
+
   const { toggleInspector } = setupContextMenu(firstTerm, configOpts, cols, rows, refs, openConfigDialog, openAbout);
   refs.toggleInspector = toggleInspector;
 
   const id = nextTabId++;
   const firstOutputRef = { write: (buf) => firstTabEntry.term.write(toCrlf(buf)) };
+  wrapOutputRef(firstOutputRef);
   const firstTabEntry = { id, label: `~ 1`, termEl: firstTermEl, term: firstTerm, fit: firstFit, podTerm: null, outputRef: firstOutputRef, btn: null };
   tabList.push(firstTabEntry);
   activeTabId = id;
