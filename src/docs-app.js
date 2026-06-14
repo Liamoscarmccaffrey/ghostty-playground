@@ -554,7 +554,7 @@ Cross-Origin-Opener-Policy: same-origin</code></pre>
 
       <section class="docs-section">
         <h3>Local model bridge</h3>
-        <p>The initial Bash process defines a <code>ghostty-ai</code> function. The function base64-encodes its parsed arguments, writes a private OSC marker, and waits. The host page removes the marker from visible output, runs WebLLM, streams sanitized text to ghostty-web, and sends Enter to release Bash.</p>
+        <p>The initial Bash process defines a <code>ghostty-ai</code> function. The function writes its parsed arguments in a private OSC marker and waits. The host page removes the marker from visible output, runs WebLLM, streams sanitized text to ghostty-web, and sends Enter to release Bash.</p>
       </section>
     `,
   },

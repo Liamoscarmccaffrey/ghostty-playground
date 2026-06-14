@@ -750,9 +750,7 @@ const HOST_COMMAND_MARKER_END = 0x07;
 
 const LOCAL_MODEL_SHELL_BOOTSTRAP = [
   'ghostty-ai() {',
-  '  local _ghostty_ai_payload',
-  "  _ghostty_ai_payload=$(printf '%s' \"$*\" | base64 -w0)",
-  "  printf '\\033]777;ghostty-ai-ready;%s\\007' \"$_ghostty_ai_payload\"",
+  "  printf '\\033]777;ghostty-ai-ready;raw:%s\\007' \"$*\"",
   '  IFS= read -r _ghostty_ai_resume',
   '}',
   'export -f ghostty-ai',
@@ -777,15 +775,32 @@ function findByte(bytes, value, start = 0) {
   return -1;
 }
 
-function decodeHostCommandPayload(bytes) {
+function decodeLegacyBase64Payload(payload) {
+  const binary = atob(payload);
+  const decoded = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index++) {
+    decoded[index] = binary.charCodeAt(index);
+  }
+  return new TextDecoder().decode(decoded);
+}
+
+function decodeHostCommandPayload(bytes, submittedCommand) {
   try {
-    const base64 = new TextDecoder().decode(bytes);
-    const binary = atob(base64);
-    const decoded = new Uint8Array(binary.length);
-    for (let index = 0; index < binary.length; index++) {
-      decoded[index] = binary.charCodeAt(index);
+    const payload = new TextDecoder().decode(bytes);
+    let args = '';
+    if (payload.startsWith('raw:')) {
+      args = payload.slice(4);
+    } else if (payload) {
+      // Accept panes started with the previous base64 bridge until they close.
+      try {
+        args = decodeLegacyBase64Payload(payload);
+      } catch {
+        args = payload;
+      }
     }
-    const args = new TextDecoder().decode(decoded);
+    if (!args && submittedCommand?.startsWith('ghostty-ai')) {
+      return submittedCommand;
+    }
     return args ? `ghostty-ai ${args}` : 'ghostty-ai';
   } catch {
     return null;
@@ -819,7 +834,11 @@ function filterHostCommandMarkers(pane, bytes) {
       return { output, commands };
     }
     parts.push(combined.subarray(cursor, markerIndex));
-    commands.push(decodeHostCommandPayload(combined.subarray(payloadStart, markerEnd)));
+    commands.push(decodeHostCommandPayload(
+      combined.subarray(payloadStart, markerEnd),
+      pane.lastSubmittedCommand,
+    ));
+    pane.lastSubmittedCommand = '';
     cursor = markerEnd + 1;
   }
 
@@ -1921,9 +1940,9 @@ async function main() {
     pane.hostCommandActive = true;
 
     const rawArgs = commandLine.slice('ghostty-ai'.length).trim();
-    const firstSpace = rawArgs.indexOf(' ');
-    const verb = (firstSpace === -1 ? rawArgs : rawArgs.slice(0, firstSpace)).toLowerCase();
-    const remainder = firstSpace === -1 ? '' : rawArgs.slice(firstSpace + 1).trim();
+    const verbMatch = /^(\S+)(?:\s+([\s\S]*))?$/.exec(rawArgs);
+    const verb = (verbMatch?.[1] ?? '').toLowerCase();
+    const remainder = (verbMatch?.[2] ?? '').trim();
 
     try {
       if (!rawArgs || verb === 'help' || verb === '--help' || verb === '-h') {
@@ -2047,6 +2066,7 @@ async function main() {
       if (char === '\r' || char === '\n') {
         const command = pane.inputTriggerBuffer.trim();
         pane.inputTriggerBuffer = '';
+        pane.lastSubmittedCommand = command;
         if (command === trigger) {
           podTerm.readData('\x15\r');
           launchGame();
@@ -2152,6 +2172,7 @@ async function main() {
       selectionCopyTimer: null,
       triggerBuffer: '',
       inputTriggerBuffer: '',
+      lastSubmittedCommand: '',
       osc52Buffer: '',
       aiMessages: [],
       aiAbortController: null,
