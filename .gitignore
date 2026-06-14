@@ -7,6 +7,9 @@ dist/
 # dependencies
 node_modules/
 
+# reference-only source checkout
+browserpod/
+
 # logs
 npm-debug.log*
 yarn-debug.log*
