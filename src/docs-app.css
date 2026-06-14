@@ -174,7 +174,7 @@
 }
 
 .docs-section code:not(.docs-code code) {
-  color: #9ece6a;
+  color: #7aa2f7;
   background: #191a28;
   border: 1px solid #292a3d;
   border-radius: 3px;
@@ -276,7 +276,7 @@
 }
 
 .docs-callout[data-tone="success"] {
-  border-left-color: #9ece6a;
+  border-left-color: #7aa2f7;
 }
 
 .docs-callout[data-tone="danger"] {
@@ -363,7 +363,7 @@
 }
 
 .docs-table code {
-  color: #9ece6a;
+  color: #7aa2f7;
   font-family: ui-monospace, 'SF Mono', monospace;
 }
 

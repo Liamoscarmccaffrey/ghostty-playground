@@ -236,7 +236,7 @@ export function setupGame() {
 
   function triggerScared() {
     scared = true;
-    statusEl.style.color = '#9ece6a';
+    statusEl.style.color = '#7aa2f7';
     statusEl.textContent = 'Power pellet — Pac-Man is coming for you!';
     clearTimeout(scaredTimer);
     scaredTimer = setTimeout(() => {
@@ -255,7 +255,7 @@ export function setupGame() {
     clearTimeout(scaredTimer); scaredTimer = null;
     fullRender();
     if (won) {
-      statusEl.style.color = '#9ece6a';
+      statusEl.style.color = '#7aa2f7';
       statusEl.textContent = 'You got Pac-Man! Ghostty wins.';
     } else {
       statusEl.style.color = '#f7768e';

@@ -1899,6 +1899,68 @@ async function main() {
     pane.term.write(String(text).replace(/\r?\n/g, '\r\n'));
   }
 
+  const portalNotices = new Map();
+
+  function showPortal({ url, port }) {
+    let portalUrl;
+    try {
+      portalUrl = new URL(url);
+    } catch {
+      console.error('BrowserPod returned an invalid Portal URL:', url);
+      return;
+    }
+    if (!['http:', 'https:'].includes(portalUrl.protocol)) {
+      console.error('BrowserPod returned an unsupported Portal URL:', portalUrl.href);
+      return;
+    }
+
+    const pane = getActivePane();
+    if (pane) {
+      writeHostText(
+        pane,
+        `\r\n[BrowserPod Portal] Port ${port}: ${portalUrl.href}\r\n`,
+      );
+    }
+
+    let container = document.getElementById('portal-notifications');
+    if (!container) {
+      container = document.createElement('div');
+      container.id = 'portal-notifications';
+      container.setAttribute('aria-live', 'polite');
+      document.body.appendChild(container);
+    }
+
+    portalNotices.get(port)?.remove();
+
+    const notice = document.createElement('div');
+    notice.className = 'portal-notice';
+
+    const label = document.createElement('span');
+    label.className = 'portal-notice-label';
+    label.textContent = `Server on port ${port}`;
+
+    const openLink = document.createElement('a');
+    openLink.className = 'portal-notice-open';
+    openLink.href = portalUrl.href;
+    openLink.target = '_blank';
+    openLink.rel = 'noopener';
+    openLink.textContent = 'Open';
+
+    const closeButton = document.createElement('button');
+    closeButton.className = 'portal-notice-close';
+    closeButton.type = 'button';
+    closeButton.setAttribute('aria-label', `Dismiss Portal for port ${port}`);
+    closeButton.textContent = '\u00d7';
+    closeButton.addEventListener('click', () => {
+      notice.remove();
+      portalNotices.delete(port);
+    });
+
+    notice.append(label, openLink, closeButton);
+    container.appendChild(notice);
+    portalNotices.set(port, notice);
+  }
+
   function writeModelText(pane, text) {
     const safeText = String(text).replace(
       /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g,
@@ -2519,6 +2581,7 @@ async function main() {
       apiKey: import.meta.env.VITE_BP_APIKEY,
       storageKey: 'ghostty',
     });
+    pod.onPortal(showPortal);
   } catch (error) {
     reportPaneError(getActivePane(), 'BrowserPod failed to boot', error);
     throw error;

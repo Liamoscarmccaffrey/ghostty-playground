@@ -3,27 +3,39 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Ghostty Playground — Ghostty terminal online in your browser</title>
-    <meta name="description" content="Run a real Ghostty terminal emulator directly in your browser. Supports Ghostty config format, 500+ themes, custom keybindings, and multi-tab sessions. No install required." />
-    <meta name="keywords" content="ghostty, ghostty web, ghostty online, ghostty terminal, ghostty browser, ghostty config, ghostty playground, ghostty themes, terminal emulator online" />
+    <title>Ghostty Playground: Ghostty Online in Your Browser</title>
+    <meta name="description" content="Run Ghostty online with Bash, Node.js and npm in your browser. Learn how BrowserPod handles commands, project files, web servers and Portal URLs." />
+    <meta name="robots" content="index, follow" />
 
     <!-- Open Graph -->
     <meta property="og:type" content="website" />
-    <meta property="og:title" content="Ghostty Playground — Ghostty terminal online in your browser" />
-    <meta property="og:description" content="Run a real Ghostty terminal emulator directly in your browser. Supports Ghostty config format, 500+ themes, custom keybindings, and multi-tab sessions. No install required." />
+    <meta property="og:title" content="Ghostty Playground: Ghostty Online in Your Browser" />
+    <meta property="og:description" content="Run Ghostty online with Bash, Node.js and npm. BrowserPod provides commands, project files, web servers and Portal URLs inside the browser." />
     <meta property="og:site_name" content="Ghostty Playground" />
+    <meta property="og:url" content="https://ghosttyplayground.com/" />
     <meta property="og:image" content="https://ghosttyplayground.com/og-image.png" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
 
     <!-- Twitter -->
     <meta name="twitter:card" content="summary_large_image" />
-    <meta name="twitter:title" content="Ghostty Playground — Ghostty terminal online in your browser" />
-    <meta name="twitter:description" content="Run a real Ghostty terminal emulator directly in your browser. Supports Ghostty config format, 500+ themes, custom keybindings, and multi-tab sessions. No install required." />
+    <meta name="twitter:title" content="Ghostty Playground: Ghostty Online in Your Browser" />
+    <meta name="twitter:description" content="Run Ghostty online with Bash, Node.js and npm. BrowserPod provides the browser-hosted command and project environment." />
     <meta name="twitter:image" content="https://ghosttyplayground.com/og-image.png" />
 
     <link rel="canonical" href="https://ghosttyplayground.com/" />
     <link rel="icon" type="image/svg+xml" href="/ghostty-icon.svg" />
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "WebApplication",
+        "name": "Ghostty Playground",
+        "url": "https://ghosttyplayground.com/",
+        "applicationCategory": "DeveloperApplication",
+        "operatingSystem": "Web browser",
+        "description": "A browser-based Ghostty terminal with Bash, Node.js, npm, project files, and BrowserPod."
+      }
+    </script>
 
     <!-- Establish cross-origin isolation (for SharedArrayBuffer) before the
          app module runs. Must come first in <head>. -->
@@ -207,6 +219,53 @@
         text-decoration: none;
       }
       .pc-footer a:hover { color: #a9b1d6; }
+
+      #portal-notifications {
+        position: fixed;
+        top: 48px;
+        right: 12px;
+        z-index: 1500;
+        display: flex;
+        flex-direction: column;
+        gap: 8px;
+        width: min(360px, calc(100vw - 24px));
+      }
+      .portal-notice {
+        display: flex;
+        align-items: center;
+        gap: 10px;
+        min-height: 40px;
+        padding: 8px 8px 8px 12px;
+        border: 1px solid #3d59a1;
+        border-radius: 5px;
+        background: #171825;
+        box-shadow: 0 8px 24px rgba(0,0,0,0.4);
+        color: #c0caf5;
+        font: 12px/1.4 ui-monospace, 'SF Mono', monospace;
+      }
+      .portal-notice-label {
+        flex: 1;
+        min-width: 0;
+      }
+      .portal-notice-open {
+        padding: 4px 9px;
+        border: 1px solid #7aa2f7;
+        border-radius: 3px;
+        color: #7aa2f7;
+        text-decoration: none;
+      }
+      .portal-notice-open:hover {
+        background: #1e2045;
+        color: #c0caf5;
+      }
+      .portal-notice-close {
+        border: 0;
+        background: none;
+        color: #737aa2;
+        cursor: pointer;
+        font: 18px/1 system-ui, sans-serif;
+      }
+      .portal-notice-close:hover { color: #c0caf5; }
 
       /* Inspector panel — fixed overlay, slides up from bottom */
       #inspector {
@@ -523,8 +582,8 @@
       .hl-property   { color: #7aa2f7; }
       .hl-boolean    { color: #ff9e64; }
       .hl-number     { color: #ff9e64; }
-      .hl-string     { color: #9ece6a; }
-      .hl-color      { color: #73daca; }
+      .hl-string     { color: #bb9af7; }
+      .hl-color      { color: #7aa2f7; }
       .hl-operator   { color: #89ddff; }
       .hl-keyword    { color: #bb9af7; }
       .hl-path       { color: #e0af68; }
@@ -1238,7 +1297,7 @@
         </div>
         <div id="about-body">
           <div id="about-title">ghostty-web</div>
-          <div id="about-desc">A Ghostty terminal emulator running entirely in the browser, powered by BrowserPod and the Ghostty WASM engine. Supports Ghostty config format, themes, keybindings, multi-tab sessions, and persistent filesystem storage.</div>
+          <div id="about-desc">Ghostty Playground combines the ghostty-web terminal engine with a BrowserPod environment for Bash, Node.js, npm, project files, and browser-hosted processes.</div>
           <div id="about-meta">
             <span>engine: @crunchloop/ghostty-web</span>
             <span>runtime: @leaningtech/browserpod</span>
@@ -1255,8 +1314,8 @@
         <div class="docs-header-title">
           <img src="/ghostty-wordmark.svg" alt="Ghostty" />
           <div>
-            <h1 id="docs-title">Documentation</h1>
-            <p>Reference for the terminal workspace, configuration, keybindings, local inference, and browser-specific limitations.</p>
+            <h1 id="docs-title">Ghostty Playground</h1>
+            <p>Documentation for the Ghostty browser terminal, BrowserPod runtime, Node.js, npm, project files, Portals, and local WebGPU models.</p>
           </div>
         </div>
         <p class="docs-session-status">Navigation does not reload the terminal.</p>
@@ -1271,6 +1330,21 @@
         </aside>
 
         <main id="docs-view" class="docs-view" tabindex="-1" aria-live="polite">
+          <article data-doc-page="overview">
+            <header class="docs-page-head">
+              <h2>What is Ghostty Playground?</h2>
+              <p class="docs-lead">Ghostty Playground combines a Ghostty terminal with a BrowserPod development environment so you can use Bash, Git, Node.js, npm, and project files in one browser page.</p>
+            </header>
+            <section class="docs-section">
+              <h3>Ghostty terminal and BrowserPod runtime</h3>
+              <p><code>@crunchloop/ghostty-web</code> provides terminal parsing, input, scrollback, selection, and rendering. BrowserPod runs Bash, Git, Node.js, npm, child processes, and a persistent virtual filesystem through WebAssembly.</p>
+              <p>The Playground connects both systems and adds Ghostty-style configuration, themes, browser controls, and optional local model inference.</p>
+            </section>
+            <section class="docs-section">
+              <h3>Browser-hosted development</h3>
+              <p>Project commands run inside BrowserPod and use its browser filesystem. BrowserPod Portals can expose HTTP servers running inside a Pod through controlled URLs when the host page connects the Portal callback.</p>
+            </section>
+          </article>
           <noscript>
             <div class="docs-page-head">
               <h2>JavaScript required</h2>
