@@ -8,6 +8,11 @@ import { createConfigPanel } from './src/config-panel.js';
 import { mergeConfigText, scrollbackBytesToLines } from './src/config-utils.js';
 import { SplitTree } from './src/split-tree.js';
 import { SplitLayout } from './src/split-layout.js';
+import {
+  formatLocalModelList,
+  localModelRuntime,
+  resolveLocalModel,
+} from './src/local-models.js';
 // Reset saved config if the bundled config has changed (e.g. after an update).
 if (localStorage.getItem('ghostty-config-hash') !== btoa(bundledConfigText.slice(0, 64))) {
   localStorage.removeItem('ghostty-config');
@@ -736,6 +741,116 @@ function copyOutputBytes(buffer) {
   const copy = new Uint8Array(view.byteLength);
   copy.set(view);
   return copy;
+}
+
+const HOST_COMMAND_MARKER_PREFIX = new TextEncoder().encode(
+  '\x1b]777;ghostty-ai-ready;',
+);
+const HOST_COMMAND_MARKER_END = 0x07;
+
+const LOCAL_MODEL_SHELL_BOOTSTRAP = [
+  'ghostty-ai() {',
+  '  local _ghostty_ai_payload',
+  "  _ghostty_ai_payload=$(printf '%s' \"$*\" | base64 -w0)",
+  "  printf '\\033]777;ghostty-ai-ready;%s\\007' \"$_ghostty_ai_payload\"",
+  '  IFS= read -r _ghostty_ai_resume',
+  '}',
+  'export -f ghostty-ai',
+  'exec bash --norc -i',
+].join('\n');
+
+function findByteSequence(bytes, sequence, start = 0) {
+  const end = bytes.length - sequence.length;
+  outer: for (let index = start; index <= end; index++) {
+    for (let offset = 0; offset < sequence.length; offset++) {
+      if (bytes[index + offset] !== sequence[offset]) continue outer;
+    }
+    return index;
+  }
+  return -1;
+}
+
+function findByte(bytes, value, start = 0) {
+  for (let index = start; index < bytes.length; index++) {
+    if (bytes[index] === value) return index;
+  }
+  return -1;
+}
+
+function decodeHostCommandPayload(bytes) {
+  try {
+    const base64 = new TextDecoder().decode(bytes);
+    const binary = atob(base64);
+    const decoded = new Uint8Array(binary.length);
+    for (let index = 0; index < binary.length; index++) {
+      decoded[index] = binary.charCodeAt(index);
+    }
+    const args = new TextDecoder().decode(decoded);
+    return args ? `ghostty-ai ${args}` : 'ghostty-ai';
+  } catch {
+    return null;
+  }
+}
+
+function filterHostCommandMarkers(pane, bytes) {
+  const buffered = pane.hostMarkerBuffer;
+  const combined = new Uint8Array(buffered.length + bytes.length);
+  combined.set(buffered);
+  combined.set(bytes, buffered.length);
+
+  const parts = [];
+  const commands = [];
+  let cursor = 0;
+  for (;;) {
+    const markerIndex = findByteSequence(combined, HOST_COMMAND_MARKER_PREFIX, cursor);
+    if (markerIndex === -1) break;
+    const payloadStart = markerIndex + HOST_COMMAND_MARKER_PREFIX.length;
+    const markerEnd = findByte(combined, HOST_COMMAND_MARKER_END, payloadStart);
+    if (markerEnd === -1) {
+      parts.push(combined.subarray(cursor, markerIndex));
+      pane.hostMarkerBuffer = combined.slice(markerIndex);
+      const outputLength = parts.reduce((total, part) => total + part.length, 0);
+      const output = new Uint8Array(outputLength);
+      let outputOffset = 0;
+      for (const part of parts) {
+        output.set(part, outputOffset);
+        outputOffset += part.length;
+      }
+      return { output, commands };
+    }
+    parts.push(combined.subarray(cursor, markerIndex));
+    commands.push(decodeHostCommandPayload(combined.subarray(payloadStart, markerEnd)));
+    cursor = markerEnd + 1;
+  }
+
+  const tail = combined.subarray(cursor);
+  let heldLength = 0;
+  const maxHeldLength = Math.min(tail.length, HOST_COMMAND_MARKER_PREFIX.length - 1);
+  for (let length = maxHeldLength; length > 0; length--) {
+    let matches = true;
+    for (let index = 0; index < length; index++) {
+      if (tail[tail.length - length + index] !== HOST_COMMAND_MARKER_PREFIX[index]) {
+        matches = false;
+        break;
+      }
+    }
+    if (matches) {
+      heldLength = length;
+      break;
+    }
+  }
+
+  parts.push(tail.subarray(0, tail.length - heldLength));
+  pane.hostMarkerBuffer = tail.slice(tail.length - heldLength);
+
+  const outputLength = parts.reduce((total, part) => total + part.length, 0);
+  const output = new Uint8Array(outputLength);
+  let outputOffset = 0;
+  for (const part of parts) {
+    output.set(part, outputOffset);
+    outputOffset += part.length;
+  }
+  return { output, commands };
 }
 
 function clamp(value, min, max) {
@@ -1760,36 +1875,220 @@ async function main() {
     openGame();
   }
 
-  function inspectGameInput(pane, data) {
+  function writeHostText(pane, text) {
+    if (pane.closed) return;
+    pane.term.write(String(text).replace(/\r?\n/g, '\r\n'));
+  }
+
+  function writeModelText(pane, text) {
+    const safeText = String(text).replace(
+      /[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]/g,
+      character => character === '\x1b'
+        ? '[ESC]'
+        : character === '\x7f'
+          ? '^?'
+          : `^${String.fromCharCode(character.charCodeAt(0) + 64)}`,
+    );
+    writeHostText(pane, safeText);
+  }
+
+  function finishHostCommand(pane) {
+    pane.hostCommandActive = false;
+    pane.aiAbortController = null;
+    pane.loadInterruptNotified = false;
+    if (!pane.closed) {
+      pane.podTerm?.readData('\r');
+      pane.term.focus();
+    }
+  }
+
+  function localModelHelp() {
+    return [
+      'Experimental local inference commands:',
+      '  ghostty-ai models',
+      '  ghostty-ai load <number|model-id>',
+      '  ghostty-ai ask <prompt>',
+      '  ghostty-ai <prompt>              shorthand for ask',
+      '  ghostty-ai status',
+      '  ghostty-ai clear                 clear this pane conversation',
+      '  ghostty-ai unload                release model memory',
+      '',
+      'Models run in the browser with WebGPU. They cannot execute terminal commands or use tools.',
+    ].join('\r\n');
+  }
+
+  async function runLocalModelCommand(pane, commandLine) {
+    pane.hostCommandActive = true;
+
+    const rawArgs = commandLine.slice('ghostty-ai'.length).trim();
+    const firstSpace = rawArgs.indexOf(' ');
+    const verb = (firstSpace === -1 ? rawArgs : rawArgs.slice(0, firstSpace)).toLowerCase();
+    const remainder = firstSpace === -1 ? '' : rawArgs.slice(firstSpace + 1).trim();
+
+    try {
+      if (!rawArgs || verb === 'help' || verb === '--help' || verb === '-h') {
+        writeHostText(pane, `${localModelHelp()}\r\n`);
+        return;
+      }
+
+      if (verb === 'models' || verb === 'list') {
+        writeHostText(pane, `${formatLocalModelList()}\r\n`);
+        return;
+      }
+
+      if (verb === 'status') {
+        writeHostText(pane, `[ghostty-ai] ${localModelRuntime.status}\r\n`);
+        writeHostText(pane, `[ghostty-ai] conversation turns: ${Math.floor(pane.aiMessages.length / 2)}\r\n`);
+        return;
+      }
+
+      if (verb === 'clear') {
+        pane.aiMessages = [];
+        writeHostText(pane, '[ghostty-ai] conversation cleared\r\n');
+        return;
+      }
+
+      if (verb === 'unload') {
+        writeHostText(pane, '[ghostty-ai] unloading model...\r\n');
+        await localModelRuntime.unload();
+        forEachPane(candidate => {
+          candidate.aiMessages = [];
+        });
+        writeHostText(pane, '[ghostty-ai] model unloaded\r\n');
+        return;
+      }
+
+      if (verb === 'load') {
+        if (!remainder) {
+          throw new Error('Usage: ghostty-ai load <number|model-id>');
+        }
+        const model = resolveLocalModel(remainder);
+        if (!model) {
+          throw new Error(`Unknown or ambiguous model "${remainder}". Run \`ghostty-ai models\`.`);
+        }
+        const previousModelId = localModelRuntime.loadedModel?.id;
+        let lastProgress = '';
+        await localModelRuntime.load(model, (text, percentage) => {
+          if (pane.closed) return;
+          const progress = `[ghostty-ai] ${text.replace(/\s+/g, ' ').trim()} ${percentage}%`;
+          if (progress === lastProgress) return;
+          lastProgress = progress;
+          pane.term.write(`\r\x1b[2K${progress}`);
+        });
+        if (previousModelId !== model.id) {
+          forEachPane(candidate => {
+            candidate.aiMessages = [];
+          });
+        }
+        writeHostText(pane, `\r\x1b[2K[ghostty-ai] ready: ${model.label}\r\n`);
+        return;
+      }
+
+      let prompt = verb === 'ask' || verb === 'chat' ? remainder : rawArgs;
+      if ((prompt.startsWith('"') && prompt.endsWith('"')) ||
+          (prompt.startsWith("'") && prompt.endsWith("'"))) {
+        prompt = prompt.slice(1, -1);
+      }
+      if (!prompt) throw new Error('Usage: ghostty-ai ask <prompt>');
+
+      const controller = new AbortController();
+      pane.aiAbortController = controller;
+      const userMessage = { role: 'user', content: prompt };
+      const messages = [...pane.aiMessages.slice(-10), userMessage];
+      const modelLabel = localModelRuntime.loadedModel?.label ?? 'local model';
+      writeHostText(pane, `[${modelLabel}] `);
+      let response = '';
+      response = await localModelRuntime.generate(
+        messages,
+        text => writeModelText(pane, text),
+        controller.signal,
+      );
+      writeHostText(pane, '\r\n');
+      if (!controller.signal.aborted && response) {
+        pane.aiMessages = [
+          ...messages,
+          { role: 'assistant', content: response },
+        ].slice(-12);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      writeHostText(pane, `\r\n[ghostty-ai error] ${message}\r\n`);
+    } finally {
+      finishHostCommand(pane);
+    }
+  }
+
+  function startHostCommand(pane, command) {
+    if (pane.closed) return;
+    pane.hostCommandActive = true;
+    if (!command) {
+      writeHostText(pane, '\r\n[ghostty-ai error] Invalid terminal bridge payload.\r\n');
+      finishHostCommand(pane);
+      return;
+    }
+    void runLocalModelCommand(pane, command);
+  }
+
+  function forwardPaneInput(pane, podTerm, data) {
     for (const char of data) {
+      if (pane.hostCommandActive) {
+        if (char === '\x03') {
+          if (pane.aiAbortController) {
+            pane.aiAbortController.abort();
+            writeHostText(pane, '^C\r\n');
+          } else if (!pane.loadInterruptNotified) {
+            pane.loadInterruptNotified = true;
+            writeHostText(pane, '\r\n[ghostty-ai] model loading cannot be interrupted safely\r\n');
+          }
+        }
+        continue;
+      }
+
       if (char === '\r' || char === '\n') {
-        if (pane.inputTriggerBuffer.trim() === trigger) launchGame();
+        const command = pane.inputTriggerBuffer.trim();
         pane.inputTriggerBuffer = '';
+        if (command === trigger) {
+          podTerm.readData('\x15\r');
+          launchGame();
+          continue;
+        }
       } else if (char === '\x7f' || char === '\b') {
         pane.inputTriggerBuffer = pane.inputTriggerBuffer.slice(0, -1);
       } else if (char === '\x15' || char === '\x03') {
         pane.inputTriggerBuffer = '';
+      } else if (char === '\x1b') {
+        pane.inputTriggerBuffer = '';
       } else if (char >= ' ') {
         pane.inputTriggerBuffer = (pane.inputTriggerBuffer + char).slice(-256);
       }
+      podTerm.readData(char);
     }
   }
 
   function writePaneOutput(pane, buffer) {
     if (pane.closed) return;
-    const bytes = typeof buffer === 'string' ? buffer : copyOutputBytes(buffer);
-    appendInspectorOutput(pane, bytes);
-    pane.term.write(toCrlf(bytes));
+    const bytes = typeof buffer === 'string'
+      ? new TextEncoder().encode(buffer)
+      : copyOutputBytes(buffer);
+    const { output, commands } = filterHostCommandMarkers(pane, bytes);
 
-    const text = typeof bytes === 'string' ? bytes : new TextDecoder().decode(bytes);
-    handleOsc52(pane, text);
-    pane.triggerBuffer += text;
-    if (pane.triggerBuffer.length > trigger.length * 2) {
-      pane.triggerBuffer = pane.triggerBuffer.slice(-trigger.length * 2);
+    if (output.length > 0) {
+      appendInspectorOutput(pane, output);
+      pane.term.write(toCrlf(output));
+
+      const text = new TextDecoder().decode(output);
+      handleOsc52(pane, text);
+      pane.triggerBuffer += text;
+      if (pane.triggerBuffer.length > trigger.length * 2) {
+        pane.triggerBuffer = pane.triggerBuffer.slice(-trigger.length * 2);
+      }
+      if (pane.triggerBuffer.includes(trigger)) {
+        pane.triggerBuffer = '';
+        launchGame();
+      }
     }
-    if (pane.triggerBuffer.includes(trigger)) {
-      pane.triggerBuffer = '';
-      launchGame();
+    for (const command of commands) {
+      queueMicrotask(() => startHostCommand(pane, command));
     }
   }
 
@@ -1854,6 +2153,11 @@ async function main() {
       triggerBuffer: '',
       inputTriggerBuffer: '',
       osc52Buffer: '',
+      aiMessages: [],
+      aiAbortController: null,
+      hostCommandActive: false,
+      hostMarkerBuffer: new Uint8Array(0),
+      loadInterruptNotified: false,
       promptReady: false,
       runtimeConfig: configOpts,
       starting: false,
@@ -1961,8 +2265,7 @@ async function main() {
             pane.paneEl.style.cursor = 'none';
           }
           const translated = translateKittySequences(data);
-          inspectGameInput(pane, translated);
-          podTerm.readData(translated);
+          forwardPaneInput(pane, podTerm, translated);
         }
       });
       if (getActivePane() === pane) refs.podTerm = podTerm;
@@ -1971,7 +2274,7 @@ async function main() {
       const prompt = configOpts.cursorClickToMove
         ? `\\[\\e]133;A\\a\\]${configuredPrompt}\\[\\e]133;B\\a\\]`
         : configuredPrompt;
-      const process = pod.run('bash', [], {
+      const process = pod.run('bash', ['-c', LOCAL_MODEL_SHELL_BOOTSTRAP], {
         terminal: podTerm,
         env: [`PS1=${prompt}`],
       });
@@ -1991,6 +2294,9 @@ async function main() {
 
   function disposePane(pane) {
     if (!pane || pane.closed) return;
+    pane.aiAbortController?.abort();
+    pane.aiAbortController = null;
+    pane.hostCommandActive = false;
     pane.closed = true;
     pane.inputDisposable?.dispose();
     pane.inputDisposable = null;

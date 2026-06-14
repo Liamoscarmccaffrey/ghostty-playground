@@ -189,53 +189,13 @@
 
       #page-content {
         background: #13141f;
-        padding: 64px 48px;
-        display: flex;
-        flex-direction: column;
-        gap: 48px;
-      }
-      .pc-section {
-        max-width: 760px;
-      }
-      .pc-section h2 {
-        margin: 0 0 12px;
-        font-size: 20px;
-        font-weight: 700;
-        color: #c0caf5;
-        letter-spacing: -0.01em;
-      }
-      .pc-section p {
-        margin: 0 0 10px;
-        font-size: 14px;
-        color: #a9b1d6;
-        line-height: 1.7;
-      }
-      .pc-section p:last-child { margin-bottom: 0; }
-      .pc-section ul {
-        margin: 0;
-        padding-left: 20px;
-        font-size: 14px;
-        color: #a9b1d6;
-        line-height: 1.8;
-      }
-      .pc-chips {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-        margin-top: 14px;
-      }
-      .pc-chip {
-        font-size: 12px;
-        color: #7aa2f7;
-        background: #1a1b2e;
-        border: 1px solid #2a2b3d;
-        border-radius: 4px;
-        padding: 3px 10px;
-        font-family: ui-monospace, 'SF Mono', monospace;
+        border-top: 1px solid #242536;
+        min-height: 900px;
       }
       .pc-footer {
-        padding: 32px 48px;
-        border-top: 1px solid #1e1f2e;
+        padding: 28px max(48px, calc((100vw - 1144px) / 2));
+        border-top: 1px solid #242536;
+        background: #0f1018;
         font-size: 12px;
         color: #565f89;
         display: flex;
@@ -1288,55 +1248,48 @@
       </div>
     </div>
 
-    <!-- Below-fold content for SEO and context -->
-    <div id="page-content">
-
-      <div class="pc-section">
-        <img src="/ghostty-wordmark.svg" alt="Ghostty" style="height:36px;margin-bottom:24px;display:block;" />
-        <h2>Ghostty in your browser</h2>
-        <p>Ghostty Playground runs the real Ghostty terminal engine — the same WebAssembly core as the desktop app — directly in your browser tab. There is nothing to install. Open the page and you have a full Linux shell running inside a BrowserPod sandbox.</p>
-        <p>It supports the Ghostty config file format, so you can paste in your existing <code>~/.config/ghostty/config</code> and have your fonts, colours, cursor style, and keybindings working immediately. Right-click the terminal and choose <strong>Config Panel</strong> to browse 500+ bundled themes.</p>
-      </div>
-
-      <div class="pc-section">
-        <h2>What works</h2>
-        <ul>
-          <li>Ghostty config format — same key=value syntax as the desktop app</li>
-          <li>500+ themes from the official Ghostty catalogue</li>
-          <li>Custom keybindings with Ghostty's full action syntax</li>
-          <li>Multi-tab sessions, each with its own shell</li>
-          <li>Persistent filesystem via browser storage</li>
-          <li>Kitty keyboard protocol (Ctrl+key combos, modifier keys)</li>
-          <li>Terminal Inspector — live view of VT modes, cursor, palette, I/O stream</li>
-        </ul>
-        <div class="pc-chips">
-          <span class="pc-chip">ghostty config</span>
-          <span class="pc-chip">ghostty themes</span>
-          <span class="pc-chip">ghostty keybinds</span>
-          <span class="pc-chip">ghostty online</span>
-          <span class="pc-chip">ghostty web</span>
-          <span class="pc-chip">terminal in browser</span>
+    <!-- Client-side documentation. Routes only replace #docs-view, so the
+         BrowserPod session and terminal panes remain alive while navigating. -->
+    <section id="page-content" aria-labelledby="docs-title">
+      <header class="docs-header">
+        <div class="docs-header-title">
+          <img src="/ghostty-wordmark.svg" alt="Ghostty" />
+          <div>
+            <h1 id="docs-title">Documentation</h1>
+            <p>Reference for the terminal workspace, configuration, keybindings, local inference, and browser-specific limitations.</p>
+          </div>
         </div>
-      </div>
+        <p class="docs-session-status">Navigation does not reload the terminal.</p>
+      </header>
 
-      <div class="pc-section">
-        <h2>Built on</h2>
-        <p><strong>ghostty-web</strong> by Crunchloop — the official Ghostty terminal engine compiled to WebAssembly.</p>
-        <p><strong>BrowserPod</strong> by Leaning Technologies — a full Linux environment running in-browser via WebAssembly.</p>
-        <p><strong>ghostty-config</strong> by zerebos — the visual config editor this project's config panel is based on.</p>
-        <p><strong>tree-sitter-ghostty</strong> — the Tree-sitter grammar for Ghostty config syntax highlighting.</p>
-      </div>
+      <nav id="docs-mobile-nav" class="docs-mobile-nav" aria-label="Documentation pages"></nav>
 
-    </div>
+      <div class="docs-layout">
+        <aside class="docs-sidebar">
+          <span class="docs-sidebar-label">Documentation</span>
+          <nav id="docs-nav" class="docs-nav" aria-label="Documentation pages"></nav>
+        </aside>
+
+        <main id="docs-view" class="docs-view" tabindex="-1" aria-live="polite">
+          <noscript>
+            <div class="docs-page-head">
+              <h2>JavaScript required</h2>
+              <p class="docs-lead">The terminal and documentation interface require JavaScript and WebAssembly.</p>
+            </div>
+          </noscript>
+        </main>
+      </div>
+    </section>
 
     <footer class="pc-footer">
       <span>Ghostty Playground</span>
       <a href="https://github.com/Liamoscarmccaffrey/ghostty-playground" target="_blank" rel="noopener">GitHub</a>
       <a href="https://ghostty.org" target="_blank" rel="noopener">ghostty.org</a>
       <a href="https://github.com/crunchloop/ghostty-web" target="_blank" rel="noopener">ghostty-web</a>
-      <a href="https://leaningtech.com/browserpod/" target="_blank" rel="noopener">BrowserPod</a>
+      <a href="https://browserpod.io/" target="_blank" rel="noopener">BrowserPod</a>
     </footer>
 
+    <script type="module" src="/src/docs-app.js"></script>
     <script type="module" src="/main.js"></script>
   </body>
 </html>

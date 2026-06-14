@@ -8,6 +8,7 @@ A browser-based terminal using the Ghostty rendering engine and a BrowserPod Lin
 
 - **[ghostty-web](https://github.com/crunchloop/ghostty-web)** (`@crunchloop/ghostty-web`) — the official Ghostty terminal engine compiled to WebAssembly, by Crunchloop. This project is a fork of their repository.
 - **[BrowserPod](https://leaningtech.com/browserpod/)** (`@leaningtech/browserpod`) — the in-browser Linux sandbox, by Leaning Technologies.
+- **[WebLLM](https://github.com/mlc-ai/web-llm)** (`@mlc-ai/web-llm`) — WebGPU model loading and local inference using models hosted on Hugging Face.
 - **[ghostty-config](https://github.com/zerebos/ghostty-config)** — a visual Ghostty config editor by zerebos, which the config panel in this project is based on.
 - **[tree-sitter-ghostty](https://github.com/bezhermoso/tree-sitter-ghostty)** — the Tree-sitter grammar for Ghostty config syntax, used for config file syntax highlighting.
 
@@ -26,6 +27,9 @@ BrowserPod exposes a custom terminal with `onOutput` (bytes from the PTY) and `r
 
 Config is parsed from `ghostty-config` (same key=value format as the desktop app) and passed to the Ghostty Terminal constructor at boot. The visual panel previews appearance changes without rebuilding terminals; Apply merges only edited settings into the existing config and reloads when persistence or process creation requires it.
 
+**Experimental local inference — WebLLM**
+The `ghostty-ai` terminal command downloads a selected MLC model from Hugging Face and runs it locally with WebGPU. Inference runs in the host page, while a small shell bridge keeps streamed model output ordered with the BrowserPod prompt. It is deliberately not an agent: it cannot execute commands, inspect the filesystem, or use tools.
+
 ## Current limitations
 
 Some of these are fundamental browser constraints, others are features not yet built:
@@ -38,6 +42,7 @@ Some of these are fundamental browser constraints, others are features not yet b
 - **Many keybind actions** — the Ghostty keybind action list includes OS-level and window-management actions that have no browser equivalent. See [docs/keybinds.md](docs/keybinds.md) for the full picture.
 - **Search** — in-terminal search is not yet implemented.
 - **Jump to prompt keybinds** — OSC 133 prompt integration is present for click-to-move, but ghostty-web does not expose the stored prompt positions needed for scrollback navigation.
+- **Local model resources** — model downloads range from roughly 350 MB to 4.7 GB and require WebGPU, a secure context (HTTPS or localhost), sufficient GPU memory, and a browser/device capable of running the selected model. One model and one generation are active across all panes at a time.
 
 ## Getting started
 
@@ -51,6 +56,35 @@ Open `http://localhost:5173`. A BrowserPod API key is required in a `.env` file:
 ```env
 VITE_BP_APIKEY=your_key_here
 ```
+
+## Experimental local models
+
+List and load a model from inside any terminal pane:
+
+```bash
+ghostty-ai models
+ghostty-ai load 5
+ghostty-ai ask Explain why a shell pipeline can deadlock
+```
+
+The shorter `ghostty-ai <prompt>` form also starts a conversation. Conversation history is kept separately for each pane and is cleared when the loaded model changes.
+
+```bash
+ghostty-ai status
+ghostty-ai clear
+ghostty-ai unload
+```
+
+Downloads are cached by WebLLM in browser storage. `Ctrl-C` interrupts generation; model loading itself is not safely interruptible. The available models are:
+
+| Model | Approximate download |
+| --- | ---: |
+| Hermes 2 Pro Llama 3 8B | 4.7 GB |
+| Llama 3.2 3B Instruct | 1.9 GB |
+| Llama 3.2 1B Instruct | 700 MB |
+| Qwen 2.5 1.5B Instruct | 950 MB |
+| Qwen 2.5 0.5B Instruct | 350 MB |
+| Gemma 2 2B Instruct | 1.5 GB |
 
 ## Configuration
 
@@ -142,6 +176,7 @@ src/split-tree.js   — Split pane state, navigation, resizing, and zoom
 src/split-layout.js — Split pane DOM layout and draggable dividers
 src/config-highlight.js — Syntax highlighting for the config editor
 src/ghost-animation.js  — Pre-generated ghost animation frames
+src/local-models.js — WebLLM model catalogue, loading, and streamed inference
 ghostty-config      — Default config (key=value, same format as ~/.config/ghostty/config)
 index.html          — UI shell: terminal container, tab bar, config dialog, inspector, context menu
 docs/

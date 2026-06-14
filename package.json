@@ -8,6 +8,7 @@
   "dependencies": {
     "@crunchloop/ghostty-web": "^0.4.5",
     "@leaningtech/browserpod": "2.10.0",
+    "@mlc-ai/web-llm": "^0.2.83",
     "web-tree-sitter": "^0.26.9"
   },
   "devDependencies": {
