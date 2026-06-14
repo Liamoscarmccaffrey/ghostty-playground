@@ -24,23 +24,20 @@ A full Linux environment running in-browser via WebAssembly. BrowserPod boots a 
 **The bridge — `main.js`**
 BrowserPod exposes a custom terminal with `onOutput` (bytes from the PTY) and `readData` (bytes into the PTY). Ghostty exposes `term.write()` and `term.onData()`. `main.js` wires them together and handles newline translation (`\n` → `\r\n`) since the pod PTY emits bare newlines.
 
-Config is parsed from `ghostty-config` (same key=value format as the desktop app) and passed to the Ghostty Terminal constructor at boot. Changes require a page reload — applying theme or font changes live via the renderer API causes a blank canvas, so config is saved to `localStorage` and the page reloads.
+Config is parsed from `ghostty-config` (same key=value format as the desktop app) and passed to the Ghostty Terminal constructor at boot. The visual panel previews appearance changes without rebuilding terminals; Apply merges only edited settings into the existing config and reloads when persistence or process creation requires it.
 
 ## Current limitations
 
 Some of these are fundamental browser constraints, others are features not yet built:
 
-- **Split panes** — not yet implemented. Each tab runs a single terminal. Split layout support is planned.
-- **`bold-is-bright`** — not exposed in the `@crunchloop/ghostty-web` API.
-- **`minimum-contrast`** — not exposed in the API.
-- **`window-opacity`** — `allow-transparency = true` is wired up but actual background opacity depends on CSS; there is no compositor.
-- **`working-directory`** — BrowserPod always starts in the pod's home directory; there is no API to set an initial working directory.
-- **Terminal resize** — BrowserPod's custom terminal locks its PTY dimensions at creation; there is no resize method, so the terminal is fixed at the size it fits to on boot.
+- **Native compositor effects** — background opacity and images are reproduced with browser layers, but the page cannot reproduce operating-system blur or desktop content behind a native window.
+- **Terminal resize** — BrowserPod's custom terminal locks its PTY dimensions at creation. Each pane is fitted once before its shell starts; resizing a tab or split keeps that grid fixed and clips or scrolls the canvas instead of desynchronizing the renderer and PTY.
+- **Pane shutdown** — closing a pane sends Ctrl-C followed by `exit` and detaches its renderer. BrowserPod exposes process completion but no kill primitive, so shutdown is best-effort if a process ignores terminal input.
 - **`shell-prompt`** — sets `PS1` via the `env` option on `pod.run()`; it only applies to the initial shell, not subshells.
 - **Multiple windows** — each browser tab boots its own independent BrowserPod instance. There is no way to share a running pod across tabs, so `new_window` cannot be supported.
 - **Many keybind actions** — the Ghostty keybind action list includes OS-level and window-management actions that have no browser equivalent. See [docs/keybinds.md](docs/keybinds.md) for the full picture.
 - **Search** — in-terminal search is not yet implemented.
-- **Jump to prompt** — requires OSC 133 shell integration, which is not yet wired up.
+- **Jump to prompt keybinds** — OSC 133 prompt integration is present for click-to-move, but ghostty-web does not expose the stored prompt positions needed for scrollback navigation.
 
 ## Getting started
 
@@ -64,15 +61,46 @@ Supported keys:
 ```ini
 font-size = 14
 font-family = monospace
+font-family-bold = monospace
+font-family-italic = monospace
+font-family-bold-italic = monospace
+font-thicken = false
+font-thicken-strength = 255
 
-cursor-style = block          # block | bar | underline
+cursor-style = block          # block | bar | underline | block_hollow
 cursor-style-blink = true
+cursor-opacity = 1
 
-scrollback-limit = 10000
+bold-color = bright
+faint-opacity = 0.5
+minimum-contrast = 1
+
+scrollback-limit = 10000000  # bytes; native Ghostty default is 10 MB
 smooth-scroll-duration = 200  # ms; 0 disables smooth scroll
 preserve-scroll-on-write = false
-mouse-scroll-multiplier = 3
-allow-transparency = false
+mouse-scroll-multiplier = precision:1,discrete:3
+mouse-hide-while-typing = false
+cursor-click-to-move = true
+focus-follows-mouse = false
+
+background-opacity = 1
+background-image = https://example.com/background.png
+background-image-opacity = 1
+background-image-position = center
+background-image-fit = contain
+background-image-repeat = false
+
+window-padding-x = 2
+window-padding-y = 2
+window-width = 80
+window-height = 24
+window-theme = auto
+window-decoration = auto
+
+clipboard-read = ask
+clipboard-write = allow
+clipboard-trim-trailing-spaces = true
+copy-on-select = true
 
 shell-prompt = user@host ~ %  # sets PS1
 
@@ -86,6 +114,10 @@ selection-background = #283457
 selection-foreground = #c0caf5
 palette = 0=#15161e            # indices 0–15
 ```
+
+Browser-local background files selected in the visual panel are stored in
+`localStorage` as data URLs so they remain available after Apply reloads the
+page.
 
 ### Themes
 
@@ -103,10 +135,13 @@ Individual color keys in the config are merged on top of the named theme, so you
 ## Project structure
 
 ```
-main.js             — Terminal constructor, BrowserPod bridge, config parsing, UI setup
-config-panel.js     — Visual config editor panel (themes, fonts, keybinds, background image)
-config-highlight.js — Syntax highlighting for the config editor, powered by tree-sitter-ghostty
-ghost-animation.js  — Pre-generated ghost animation frames (ported from the Ghostty animation command)
+main.js             — Terminal constructor, BrowserPod bridge, tabs, splits, and UI setup
+src/config-panel.js — Visual config editor for settings implemented by the playground
+src/config-utils.js — Config merging and native scrollback-unit conversion
+src/split-tree.js   — Split pane state, navigation, resizing, and zoom
+src/split-layout.js — Split pane DOM layout and draggable dividers
+src/config-highlight.js — Syntax highlighting for the config editor
+src/ghost-animation.js  — Pre-generated ghost animation frames
 ghostty-config      — Default config (key=value, same format as ~/.config/ghostty/config)
 index.html          — UI shell: terminal container, tab bar, config dialog, inspector, context menu
 docs/
@@ -139,6 +174,7 @@ These are required for `SharedArrayBuffer`, which BrowserPod uses for its worker
 - **Copy / Paste**
 - **About** — shows the ghost animation and project info
 - **Open Inspector** — live view of terminal grid, cursor position, VT modes, colour palette, I/O stream log
-- **Edit Config** — in-page config editor with theme browser, font controls, keybind editor, and background image support
+- **Edit Config** — raw Ghostty config editor
+- **Config Panel** — visual editor limited to settings implemented by the playground
 - **Set Title** — changes the tab title
 - **Reset** — reloads the page and reboots the pod

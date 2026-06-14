@@ -1,6 +1,8 @@
 // Settings data ported from ghostty-config-main/src/lib/data/settings.ts
 // Types stripped, theme fetch replaced with local /themes/ directory.
 
+import { idToConfigKey } from './config-utils.js';
+
 // ─── Theme browser data (ported from ghostty-style-lab) ──────────────────────
 
 const THEME_DATA = {
@@ -34,25 +36,32 @@ const THEME_CATEGORIES = [
 
 const SETTINGS_PANELS = [
   {
+    id: 'themes',
+    name: 'Themes',
+    groups: [
+      {
+        id: 'browser',
+        name: '',
+        settings: [
+          { id: 'theme', name: 'Color theme', note: 'Leave empty to use explicit color settings only.', type: 'theme', value: '', options: [] },
+          { id: '_themeBrowser', name: '', type: 'theme-browser' },
+        ]
+      },
+    ]
+  },
+  {
     id: 'colors',
     name: 'Colors',
     groups: [
-      {
-        id: 'general',
-        name: '',
-        settings: [
-          { id: 'theme', name: 'Color theme', note: 'Any colors selected after setting this will overwrite the theme\'s colors.', type: 'theme', value: '', options: [] },
-          { id: 'boldColor', name: 'Bold text color', note: 'Set to <code>bright</code> to use bright palette colors for bold text, or a hex color value. Leave empty to use the default.', type: 'text', value: '' },
-          { id: 'faintOpacity', name: 'Faint text opacity', type: 'range', value: 0.5, min: 0, max: 1, step: 0.01 },
-          { id: 'minimumContrast', name: 'Minimum contrast', type: 'range', value: 1, min: 1, max: 21, step: 0.1 },
-        ]
-      },
       {
         id: 'base',
         name: 'Base Colors',
         settings: [
           { id: 'background', name: 'Background color', type: 'color', value: '#282c34' },
           { id: 'foreground', name: 'Foreground color', type: 'color', value: '#ffffff' },
+          { id: 'boldColor', name: 'Bold color', note: 'Use a color, <code>bright</code>, or leave empty.', type: 'text', value: '', placeholder: 'bright or #rrggbb' },
+          { id: 'faintOpacity', name: 'Faint text opacity', type: 'range', value: 0.5, min: 0, max: 1, step: 0.05 },
+          { id: 'minimumContrast', name: 'Minimum contrast', type: 'range', value: 1, min: 1, max: 21, step: 0.1 },
           { id: 'selectionBackground', name: 'Selection background color', type: 'color', value: '' },
           { id: 'selectionForeground', name: 'Selection foreground color', type: 'color', value: '' },
         ]
@@ -63,7 +72,7 @@ const SETTINGS_PANELS = [
         settings: [
           { id: 'cursorColor', name: 'Cursor color', type: 'color', value: '' },
           { id: 'cursorOpacity', name: 'Cursor opacity', type: 'range', value: 1, min: 0, max: 1, step: 0.05 },
-          { id: 'cursorStyle', name: 'Cursor style', type: 'dropdown', value: 'block', options: ['block', 'bar', 'underline', { value: 'block_hollow', name: 'hollow block' }] },
+          { id: 'cursorStyle', name: 'Cursor style', type: 'dropdown', value: 'block', options: ['block', 'bar', 'underline', 'block_hollow'] },
           { id: 'cursorStyleBlink', name: 'Cursor blink', type: 'dropdown', value: '', options: ['true', 'false', { value: '', name: 'default' }] },
         ]
       },
@@ -71,20 +80,17 @@ const SETTINGS_PANELS = [
         id: 'palette',
         name: 'Color Palette',
         settings: [
-          { id: 'palette', name: '', type: 'palette', value: ['#1d1f21','#cc6666','#b5bd68','#f0c674','#81a2be','#b294bb','#8abeb7','#c5c8c6','#666666','#d54e53','#b9ca4a','#e7c547','#7aa6da','#c397d8','#70c0b1','#eaeaea'] }
-        ]
-      }
-    ]
-  },
-  {
-    id: 'themes',
-    name: 'Themes',
-    groups: [
-      {
-        id: 'browser',
-        name: '',
-        settings: [
-          { id: '_themeBrowser', name: '', type: 'theme-browser' },
+          {
+            id: 'palette',
+            name: '',
+            type: 'palette',
+            value: [
+              '#000000', '#cd3131', '#0dbc79', '#e5e510',
+              '#2472c8', '#bc3fbc', '#11a8cd', '#e5e5e5',
+              '#666666', '#f14c4c', '#23d18b', '#f5f543',
+              '#3b8eea', '#d670d6', '#29b8db', '#e5e5e5',
+            ],
+          }
         ]
       }
     ]
@@ -97,11 +103,21 @@ const SETTINGS_PANELS = [
         id: 'image',
         name: 'Background Image',
         settings: [
-          { id: 'backgroundImage', name: 'Image path', note: 'Absolute path to a PNG or JPEG file on your filesystem.', type: 'file-path', value: '' },
-          { id: 'backgroundImageOpacity', name: 'Opacity', type: 'range', value: 0.18, min: 0, max: 1, step: 0.01 },
-          { id: 'backgroundImagePosition', name: 'Position', type: 'dropdown', value: 'center', options: ['center', 'top-center', 'bottom-center', 'center-left', 'center-right'] },
-          { id: 'backgroundImageFit', name: 'Fit', type: 'dropdown', value: 'cover', options: ['cover', 'contain', 'stretch', 'none'] },
-          { id: 'backgroundImageRepeat', name: 'Repeat', type: 'switch', value: false },
+          { id: 'backgroundImage', name: 'Image', note: 'Choose a browser-local image or enter a URL/path.', type: 'file', value: '', placeholder: 'https://example.com/image.png' },
+          { id: 'backgroundImageOpacity', name: 'Image opacity', note: 'Multiplied by background opacity; values above 1 are valid.', type: 'number', value: 1, min: 0, step: 0.05 },
+          {
+            id: 'backgroundImagePosition',
+            name: 'Image position',
+            type: 'dropdown',
+            value: 'center',
+            options: [
+              'top-left', 'top-center', 'top-right',
+              'center-left', 'center', 'center-right',
+              'bottom-left', 'bottom-center', 'bottom-right',
+            ],
+          },
+          { id: 'backgroundImageFit', name: 'Image fit', type: 'dropdown', value: 'contain', options: ['contain', 'cover', 'stretch', 'none'] },
+          { id: 'backgroundImageRepeat', name: 'Repeat image', type: 'switch', value: false },
         ]
       }
     ]
@@ -114,18 +130,19 @@ const SETTINGS_PANELS = [
         id: 'general',
         name: 'General',
         settings: [
-          { id: 'fontSize', name: 'Font size', type: 'range', value: 13, min: 4, max: 60, step: 0.5 },
-          { id: 'fontThicken', name: 'Thicken fonts', type: 'switch', value: false },
+          { id: 'fontSize', name: 'Font size', type: 'range', value: 14, min: 4, max: 60, step: 0.5 },
+          { id: 'fontThicken', name: 'Thicken font strokes', type: 'switch', value: false },
+          { id: 'fontThickenStrength', name: 'Thickening strength', type: 'range', value: 255, min: 0, max: 255, step: 1 },
         ]
       },
       {
         id: 'family',
-        name: 'Font Families',
+        name: 'Font Family',
         settings: [
-          { id: 'fontFamily', name: 'Main font family', type: 'text', value: '', placeholder: 'JetBrainsMono NF' },
-          { id: 'fontFamilyBold', name: 'Bold font family', type: 'text', value: '' },
-          { id: 'fontFamilyItalic', name: 'Italic font family', type: 'text', value: '' },
-          { id: 'fontFamilyBoldItalic', name: 'Bold italic font family', type: 'text', value: '' },
+          { id: 'fontFamily', name: 'Regular', type: 'text', value: '', placeholder: 'monospace' },
+          { id: 'fontFamilyBold', name: 'Bold', type: 'text', value: '', placeholder: 'Falls back to regular' },
+          { id: 'fontFamilyItalic', name: 'Italic', type: 'text', value: '', placeholder: 'Falls back to regular' },
+          { id: 'fontFamilyBoldItalic', name: 'Bold italic', type: 'text', value: '', placeholder: 'Falls back to regular' },
         ]
       }
     ]
@@ -138,19 +155,47 @@ const SETTINGS_PANELS = [
         id: 'appearance',
         name: 'Appearance',
         settings: [
-          { id: 'backgroundOpacity', name: 'Background opacity', type: 'range', value: 1, min: 0, max: 1, step: 0.01 },
+          { id: 'backgroundOpacity', name: 'Background opacity', type: 'range', value: 1, min: 0, max: 1, step: 0.05 },
           { id: 'windowTheme', name: 'Window theme', type: 'dropdown', value: 'auto', options: ['auto', 'system', 'light', 'dark', 'ghostty'] },
-          { id: 'windowDecoration', name: 'Window decorations', type: 'dropdown', value: 'auto', options: ['auto', 'none', 'client', 'server'] },
-          { id: 'windowPaddingX', name: 'Horizontal padding', type: 'text', value: '2' },
-          { id: 'windowPaddingY', name: 'Vertical padding', type: 'text', value: '2' },
+          { id: 'windowDecoration', name: 'Window decoration', type: 'dropdown', value: 'auto', options: ['auto', 'client', 'server', 'none'] },
         ]
       },
       {
-        id: 'resize',
-        name: 'Sizing',
+        id: 'padding',
+        name: 'Padding',
         settings: [
-          { id: 'windowHeight', name: 'Initial height (cells)', type: 'number', min: 4, step: 1, size: 4, placeholder: 'e.g. 24', value: undefined },
-          { id: 'windowWidth', name: 'Initial width (cells)', type: 'number', min: 10, step: 1, size: 4, placeholder: 'e.g. 80', value: undefined },
+          { id: 'windowPaddingX', name: 'Horizontal padding', note: 'One value, or left and right separated by a comma.', type: 'text', value: '2', placeholder: '2 or 2,4' },
+          { id: 'windowPaddingY', name: 'Vertical padding', note: 'One value, or top and bottom separated by a comma.', type: 'text', value: '2', placeholder: '2 or 2,4' },
+        ]
+      },
+      {
+        id: 'initial-size',
+        name: 'Initial Grid Size',
+        settings: [
+          { id: 'windowWidth', name: 'Columns', note: 'Both columns and rows must be set. Minimum 10.', type: 'number', value: 0, min: 0, step: 1 },
+          { id: 'windowHeight', name: 'Rows', note: 'Both columns and rows must be set. Minimum 4.', type: 'number', value: 0, min: 0, step: 1 },
+        ]
+      }
+    ]
+  },
+  {
+    id: 'terminal',
+    name: 'Terminal',
+    groups: [
+      {
+        id: 'shell',
+        name: 'Shell',
+        settings: [
+          { id: 'shellPrompt', name: 'Shell prompt', note: 'Sets <code>PS1</code> for newly created shells.', type: 'text', value: '' },
+        ]
+      },
+      {
+        id: 'scrolling',
+        name: 'Scrolling',
+        settings: [
+          { id: 'scrollbackLimit', name: 'Scrollback buffer (bytes)', type: 'number', value: 10000000, min: 0, size: 10 },
+          { id: 'smoothScrollDuration', name: 'Smooth scroll duration (ms)', type: 'number', value: 100, min: 0, step: 1, size: 6 },
+          { id: 'preserveScrollOnWrite', name: 'Preserve scroll position on output', type: 'switch', value: false },
         ]
       }
     ]
@@ -163,23 +208,17 @@ const SETTINGS_PANELS = [
         id: 'main',
         name: '',
         settings: [
-          { id: 'mouseScrollMultiplier', name: 'Scroll multiplier', type: 'range', value: 3, min: 0.1, max: 10, step: 0.1 },
-          { id: 'mouseHideWhileTyping', name: 'Hide mouse while typing', type: 'switch', value: false },
-          { id: 'cursorClickToMove', name: 'Click to move cursor', type: 'switch', value: true },
-          { id: 'focusFollowsMouse', name: 'Focus splits on hover', type: 'switch', value: false },
-        ]
-      }
-    ]
-  },
-  {
-    id: 'scrollback',
-    name: 'Scrollback',
-    groups: [
-      {
-        id: 'main',
-        name: '',
-        settings: [
-          { id: 'scrollbackLimit', name: 'Scrollback buffer (bytes)', type: 'number', value: 10000000, min: 0, size: 10 },
+          {
+            id: 'mouseScrollMultiplier',
+            name: 'Scroll multiplier',
+            note: 'Accepts a number or Ghostty syntax such as <code>precision:1,discrete:3</code>.',
+            type: 'text',
+            value: 'precision:1,discrete:3',
+            placeholder: 'precision:1,discrete:3',
+          },
+          { id: 'mouseHideWhileTyping', name: 'Hide pointer while typing', type: 'switch', value: false },
+          { id: 'cursorClickToMove', name: 'Click to move at shell prompts', type: 'switch', value: true },
+          { id: 'focusFollowsMouse', name: 'Focus follows mouse', type: 'switch', value: false },
         ]
       }
     ]
@@ -189,13 +228,19 @@ const SETTINGS_PANELS = [
     name: 'Clipboard',
     groups: [
       {
-        id: 'main',
-        name: '',
+        id: 'access',
+        name: 'Access',
         settings: [
-          { id: 'clipboardRead', name: 'Terminal can read clipboard', type: 'dropdown', value: 'ask', options: ['ask', 'allow', 'deny'] },
-          { id: 'clipboardWrite', name: 'Terminal can write clipboard', type: 'dropdown', value: 'allow', options: ['ask', 'allow', 'deny'] },
-          { id: 'copyOnSelect', name: 'Copy on select', type: 'dropdown', value: 'false', options: ['true', 'false', 'clipboard'] },
-          { id: 'clipboardTrimTrailingSpaces', name: 'Trim trailing spaces on copy', type: 'switch', value: true },
+          { id: 'clipboardRead', name: 'Terminal clipboard read', type: 'dropdown', value: 'ask', options: ['ask', 'allow', 'deny'] },
+          { id: 'clipboardWrite', name: 'Terminal clipboard write', type: 'dropdown', value: 'allow', options: ['ask', 'allow', 'deny'] },
+          {
+            id: 'copyOnSelect',
+            name: 'Copy selection automatically',
+            type: 'dropdown',
+            value: 'true',
+            options: ['true', 'false', 'clipboard'],
+          },
+          { id: 'clipboardTrimTrailingSpaces', name: 'Trim trailing spaces when copying', type: 'switch', value: true },
         ]
       }
     ]
@@ -225,16 +270,11 @@ for (const panel of SETTINGS_PANELS) {
   }
 }
 
-// camelCase id -> kebab-case config key
-function idToConfigKey(id) {
-  return id.replace(/([A-Z])/g, '-$1').toLowerCase();
-}
-
 // Parse a Ghostty config string into a flat camelCase object (same logic as parse.ts)
 export function parseConfigToState(configString) {
   const re = /^\s*([a-z][a-z0-9-]*)[\s]*=\s*(.*)\s*$/;
   const colorKeys = ['background', 'foreground', 'cursor-color', 'selection-background', 'selection-foreground'];
-  const result = { palette: Array(16).fill(''), keybind: [] };
+  const result = { keybind: [] };
 
   for (const l of configString.split('\n')) {
     const line = l.trim();
@@ -249,6 +289,7 @@ export function parseConfigToState(configString) {
       const num = parseInt(split[0].trim(), 10);
       const color = split[1]?.trim();
       if (!isNaN(num) && num >= 0 && num < 16 && color) {
+        if (!result.palette) result.palette = Array(16).fill('');
         result.palette[num] = color.startsWith('#') ? color : `#${color}`;
       }
     } else if (key === 'keybind') {
@@ -271,16 +312,16 @@ export function parseConfigToState(configString) {
 }
 
 // Serialise state back to Ghostty config text.
-// Writes all settings that have a non-empty value.
-export function serialiseState(state) {
+// Writes only settings explicitly changed in the panel.
+export function serialiseState(state, dirtyIds) {
   const lines = [];
-  const bgImageKeys = new Set(['backgroundImageOpacity', 'backgroundImagePosition', 'backgroundImageFit', 'backgroundImageRepeat']);
 
   for (const panel of SETTINGS_PANELS) {
     for (const group of panel.groups) {
       for (const setting of group.settings) {
         const id = setting.id;
         if (id.startsWith('_')) continue; // internal UI-only settings
+        if (!dirtyIds.has(id)) continue;
 
         const val = state[id];
 
@@ -295,11 +336,6 @@ export function serialiseState(state) {
           const keybinds = val || [];
           for (const kb of keybinds) {
             if (kb && kb.trim()) lines.push(`keybind = ${kb.trim()}`);
-          }
-        } else if (bgImageKeys.has(id)) {
-          // Only emit background-image-* settings when an image is set
-          if (state.backgroundImage) {
-            lines.push(`${idToConfigKey(id)} = ${val}`);
           }
         } else if (val !== undefined && val !== '') {
           lines.push(`${idToConfigKey(id)} = ${val}`);
@@ -360,6 +396,53 @@ function createText(id, value, onChange, placeholder) {
   if (placeholder) input.placeholder = placeholder;
   input.addEventListener('input', () => onChange(input.value));
   return input;
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.addEventListener('load', () => resolve(String(reader.result)));
+    reader.addEventListener('error', () => reject(reader.error));
+    reader.readAsDataURL(file);
+  });
+}
+
+function createFile(id, value, onChange, onFileData, placeholder) {
+  const wrap = document.createElement('div');
+  wrap.className = 'cp-file-wrap';
+
+  const text = createText(id, value, (nextValue) => {
+    onChange(nextValue);
+    onFileData(null);
+  }, placeholder);
+  text.classList.add('cp-file-text');
+
+  const picker = document.createElement('input');
+  picker.type = 'file';
+  picker.accept = 'image/png,image/jpeg,image/webp,image/gif,image/avif';
+  picker.hidden = true;
+
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'cp-btn';
+  button.textContent = 'Choose';
+  button.addEventListener('click', () => picker.click());
+  picker.addEventListener('change', async () => {
+    const file = picker.files?.[0];
+    if (!file) return;
+    const path = file.name;
+    text.value = path;
+    onChange(path);
+    try {
+      onFileData(await readFileAsDataUrl(file));
+    } catch (error) {
+      console.error('[config] failed to read background image', error);
+      onFileData(null);
+    }
+  });
+
+  wrap.append(text, button, picker);
+  return wrap;
 }
 
 function createNumber(id, value, onChange, setting) {
@@ -819,115 +902,99 @@ function createThemeBrowser(currentTheme, onSelect) {
   }
 
   wrap._currentTheme = currentTheme;
+  wrap.setLocalThemeNames = (names) => {
+    wrap._localThemeNames = names;
+    render(search.value.trim());
+  };
   search.addEventListener('input', () => render(search.value.trim()));
   render('');
 
   return wrap;
 }
 
-function readFileAsDataUrl(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve(reader.result);
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
-  });
-}
-
-function createFilePath(id, value, onChange, onDataUrl) {
-  const wrap = document.createElement('div');
-  wrap.className = 'cp-file-path-wrap';
-  wrap.style.cssText = 'display:flex;flex-direction:column;gap:8px;width:100%;';
-
-  // File picker row
-  const pickerRow = document.createElement('div');
-  pickerRow.style.cssText = 'display:flex;gap:8px;align-items:center;';
-
-  const fileInput = document.createElement('input');
-  fileInput.type = 'file';
-  fileInput.accept = 'image/png,image/jpeg,image/gif,image/webp';
-  fileInput.style.cssText = 'flex:1;color:#a9b1d6;font-size:12px;';
-
-  fileInput.addEventListener('change', async () => {
-    const file = fileInput.files?.[0];
-    if (!file) return;
-    const dataUrl = await readFileAsDataUrl(file);
-    pathInput.value = file.name;
-    onChange(file.name);
-    onDataUrl?.(dataUrl);
-  });
-
-  const clearBtn = document.createElement('button');
-  clearBtn.className = 'cp-btn';
-  clearBtn.textContent = '✕ Clear';
-  clearBtn.style.flexShrink = '0';
-  clearBtn.addEventListener('click', () => {
-    fileInput.value = '';
-    pathInput.value = '';
-    onChange('');
-    onDataUrl?.(null);
-  });
-
-  pickerRow.appendChild(fileInput);
-  pickerRow.appendChild(clearBtn);
-
-  // Manual path override
-  const pathInput = document.createElement('input');
-  pathInput.type = 'text';
-  pathInput.className = 'cp-input';
-  pathInput.value = value || '';
-  pathInput.placeholder = 'Full path for Ghostty config (e.g. /Users/you/wallpaper.png)';
-  pathInput.addEventListener('input', () => onChange(pathInput.value.trim()));
-
-  wrap.appendChild(pickerRow);
-  wrap.appendChild(pathInput);
-  return wrap;
-}
-
 // ─── Panel renderer ──────────────────────────────────────────────────────────
 
-function applyBackgroundCss(dataUrl, opacity, fit, position) {
-  const terminalsEl = document.getElementById('terminals');
-  if (!terminalsEl) return;
-
-  let overlay = document.getElementById('bg-image-overlay');
-
-  if (!dataUrl) {
-    overlay?.remove();
-    return;
-  }
-
-  if (!overlay) {
-    overlay = document.createElement('div');
-    overlay.id = 'bg-image-overlay';
-    overlay.style.cssText = 'position:absolute;inset:0;z-index:0;pointer-events:none;';
-    terminalsEl.insertBefore(overlay, terminalsEl.firstChild);
-  }
-
-  const fitMap = { cover: 'cover', contain: 'contain', stretch: '100% 100%', none: 'auto' };
-  const posMap = {
-    'center': 'center center',
-    'top-center': 'center top',
-    'bottom-center': 'center bottom',
-    'center-left': 'left center',
-    'center-right': 'right center',
-  };
-
-  overlay.style.backgroundImage = `url(${dataUrl})`;
-  overlay.style.backgroundSize = fitMap[fit] ?? 'cover';
-  overlay.style.backgroundPosition = posMap[position] ?? 'center center';
-  overlay.style.backgroundRepeat = 'no-repeat';
-  overlay.style.opacity = opacity != null ? String(opacity) : '1';
-}
-
-export function createConfigPanel(initialConfigText, onApply, onBgImage) {
-  const state = Object.assign({}, DEFAULTS);
-  state.keybind = [];
+export function createConfigPanel(initialConfigText, onApply, onPreviewChange = null) {
+  const initialState = structuredClone(DEFAULTS);
+  initialState.keybind = [];
+  const dirtyIds = new Set();
   // Load from current config text
   const parsed = parseConfigToState(initialConfigText);
   for (const k in parsed) {
-    if (k in state || k === 'palette' || k === 'keybind') state[k] = parsed[k];
+    if (k === 'palette') {
+      initialState.palette = initialState.palette.map((color, index) => parsed.palette[index] || color);
+    } else if (k in initialState || k === 'keybind') {
+      initialState[k] = parsed[k];
+    }
   }
+  let initialBackgroundImageDataUrl = null;
+  try {
+    const saved = JSON.parse(localStorage.getItem('ghostty-background-image') || 'null');
+    if (saved?.path && saved.path === initialState.backgroundImage && saved.dataUrl) {
+      initialBackgroundImageDataUrl = saved.dataUrl;
+    }
+  } catch {
+    localStorage.removeItem('ghostty-background-image');
+  }
+  initialState._backgroundImageDataUrl = initialBackgroundImageDataUrl;
+  let state = structuredClone(initialState);
+  let activePanelId = SETTINGS_PANELS[0].id;
+  let themeSelectionVersion = 0;
+  const dirtyBaselines = {};
+
+  const updateDirty = (id) => {
+    const baseline = Object.hasOwn(dirtyBaselines, id) ? dirtyBaselines[id] : initialState[id];
+    const unchanged = JSON.stringify(state[id]) === JSON.stringify(baseline);
+    if (unchanged) dirtyIds.delete(id);
+    else dirtyIds.add(id);
+  };
+
+  const notifyPreview = () => {
+    onPreviewChange?.({
+      ...structuredClone(state),
+      _dirtyIds: [...dirtyIds],
+    });
+  };
+
+  const selectTheme = async (name, markDirty = true) => {
+    const version = ++themeSelectionVersion;
+    state.theme = name;
+    if (markDirty) updateDirty('theme');
+    if (!name) {
+      for (const key of ['background', 'foreground', 'palette']) {
+        state[key] = structuredClone(initialState[key]);
+        dirtyBaselines[key] = structuredClone(state[key]);
+      }
+      if (markDirty) notifyPreview();
+      showPanel(activePanelId);
+      return;
+    }
+    try {
+      const themeState = await fetchThemeState(name);
+      if (version !== themeSelectionVersion) return;
+      for (const key of ['background', 'foreground']) {
+        if (parsed[key] !== undefined) state[key] = structuredClone(parsed[key]);
+        else if (themeState[key] !== undefined) state[key] = structuredClone(themeState[key]);
+      }
+      const themePalette = themeState.palette ?? DEFAULTS.palette;
+      state.palette = themePalette.map((color, index) => parsed.palette?.[index] || color);
+      if (markDirty) {
+        for (const key of ['background', 'foreground', 'palette']) {
+          dirtyBaselines[key] = structuredClone(state[key]);
+        }
+      }
+      if (!markDirty) {
+        for (const key of ['background', 'foreground', 'palette']) {
+          initialState[key] = structuredClone(state[key]);
+        }
+      }
+    } catch (error) {
+      console.warn(`[config] failed to preview theme "${name}"`, error);
+    }
+    if (version !== themeSelectionVersion) return;
+    if (markDirty) notifyPreview();
+    showPanel(activePanelId);
+  };
 
   let themeNames = [];
   fetchLocalThemeNames().then(names => {
@@ -938,7 +1005,7 @@ export function createConfigPanel(initialConfigText, onApply, onBgImage) {
       const parent = existing.closest('.cp-theme-wrap');
       if (parent) {
         const newPicker = createThemePicker('theme', state.theme, v => {
-          state.theme = v;
+          void selectTheme(v);
         }, themeNames);
         parent.replaceWith(newPicker);
       }
@@ -946,7 +1013,7 @@ export function createConfigPanel(initialConfigText, onApply, onBgImage) {
     // Update theme browser if already open
     const browser = document.querySelector('.cp-theme-browser');
     if (browser) {
-      browser._localThemeNames = names;
+      browser.setLocalThemeNames(names);
     }
   });
 
@@ -960,7 +1027,7 @@ export function createConfigPanel(initialConfigText, onApply, onBgImage) {
   const closeBtn = document.createElement('button');
   closeBtn.className = 'cp-close';
   closeBtn.innerHTML = '&#x2715;';
-  closeBtn.addEventListener('click', () => panel.classList.remove('visible'));
+  closeBtn.addEventListener('click', closeWithoutApplying);
   header.appendChild(closeBtn);
   panel.appendChild(header);
 
@@ -993,13 +1060,28 @@ export function createConfigPanel(initialConfigText, onApply, onBgImage) {
   const cancelBtn = document.createElement('button');
   cancelBtn.className = 'cp-btn';
   cancelBtn.textContent = 'Cancel';
-  cancelBtn.addEventListener('click', () => panel.classList.remove('visible'));
+  cancelBtn.addEventListener('click', closeWithoutApplying);
   const applyBtn = document.createElement('button');
   applyBtn.className = 'cp-btn cp-btn-primary';
   applyBtn.textContent = 'Apply';
   applyBtn.addEventListener('click', () => {
-    const text = serialiseState(state);
-    onApply(text);
+    if (dirtyIds.size === 0) {
+      panel.classList.remove('visible');
+      return;
+    }
+    const replacedKeys = new Set([...dirtyIds].map(idToConfigKey));
+    const text = serialiseState(state, dirtyIds);
+    if (dirtyIds.has('backgroundImage')) {
+      if (state.backgroundImage && state._backgroundImageDataUrl) {
+        localStorage.setItem('ghostty-background-image', JSON.stringify({
+          path: state.backgroundImage,
+          dataUrl: state._backgroundImageDataUrl,
+        }));
+      } else {
+        localStorage.removeItem('ghostty-background-image');
+      }
+    }
+    onApply({ text, replacedKeys });
   });
   footer.appendChild(cancelBtn);
   footer.appendChild(applyBtn);
@@ -1008,6 +1090,7 @@ export function createConfigPanel(initialConfigText, onApply, onBgImage) {
   function showPanel(panelId) {
     const panelData = SETTINGS_PANELS.find(p => p.id === panelId);
     if (!panelData) return;
+    activePanelId = panelId;
 
     // Update sidebar active state
     for (const btn of sidebar.querySelectorAll('.cp-panel-btn')) {
@@ -1031,7 +1114,11 @@ export function createConfigPanel(initialConfigText, onApply, onBgImage) {
         if (setting.type === 'palette') {
           const row = document.createElement('div');
           row.className = 'cp-row cp-row-palette';
-          const widget = createPalette(setting.id, state[setting.id], v => { state[setting.id] = v; });
+          const widget = createPalette(setting.id, state[setting.id], v => {
+            state[setting.id] = v;
+            updateDirty(setting.id);
+            notifyPreview();
+          });
           row.appendChild(widget);
           section.appendChild(row);
           continue;
@@ -1040,50 +1127,21 @@ export function createConfigPanel(initialConfigText, onApply, onBgImage) {
         if (setting.type === 'keybinds') {
           const row = document.createElement('div');
           row.className = 'cp-row cp-row-keybinds';
-          const widget = createKeybinds(setting.id, state[setting.id], v => { state[setting.id] = v; });
+          const widget = createKeybinds(setting.id, state[setting.id], v => {
+            state[setting.id] = v;
+            updateDirty(setting.id);
+          });
           row.appendChild(widget);
           section.appendChild(row);
           continue;
         }
 
         if (setting.type === 'theme-browser') {
-          const browser = createThemeBrowser(state.theme, (name, data) => {
-            state.theme = name;
-            if (data) {
-              state.background = data.bg;
-              state.foreground = data.fg;
-            }
+          const browser = createThemeBrowser(state.theme, (name) => {
+            void selectTheme(name);
           });
-          browser._localThemeNames = themeNames;
+          browser.setLocalThemeNames(themeNames);
           section.appendChild(browser);
-          continue;
-        }
-
-        if (setting.type === 'file-path') {
-          const block = document.createElement('div');
-          block.style.cssText = 'padding:8px 0;display:flex;flex-direction:column;gap:6px;';
-          const labelEl = document.createElement('label');
-          labelEl.className = 'cp-label';
-          labelEl.textContent = setting.name;
-          block.appendChild(labelEl);
-          if (setting.note) {
-            const note = document.createElement('span');
-            note.className = 'cp-note';
-            note.innerHTML = setting.note;
-            block.appendChild(note);
-          }
-          const widget = createFilePath(
-            setting.id,
-            state[setting.id],
-            v => { state[setting.id] = v; },
-            dataUrl => {
-              state._bgDataUrl = dataUrl;
-              applyBackgroundCss(dataUrl, state.backgroundImageOpacity, state.backgroundImageFit, state.backgroundImagePosition);
-              onBgImage?.(dataUrl, state.backgroundImageOpacity, state.backgroundImageFit, state.backgroundImagePosition);
-            }
-          );
-          block.appendChild(widget);
-          section.appendChild(block);
           continue;
         }
 
@@ -1107,19 +1165,29 @@ export function createConfigPanel(initialConfigText, onApply, onBgImage) {
         controlWrap.className = 'cp-control';
 
         let widget;
-        const bgLiveIds = new Set(['backgroundImageOpacity', 'backgroundImageFit', 'backgroundImagePosition', 'backgroundImageRepeat']);
         const makeOnChange = (id) => (v) => {
           state[id] = v;
-          if (bgLiveIds.has(id) && state._bgDataUrl) {
-            applyBackgroundCss(state._bgDataUrl, state.backgroundImageOpacity, state.backgroundImageFit, state.backgroundImagePosition);
-            onBgImage?.(state._bgDataUrl, state.backgroundImageOpacity, state.backgroundImageFit, state.backgroundImagePosition);
-          }
+          updateDirty(id);
+          notifyPreview();
         };
 
         if (setting.type === 'switch') {
           widget = createSwitch(setting.id, state[setting.id], makeOnChange(setting.id));
         } else if (setting.type === 'text') {
           widget = createText(setting.id, state[setting.id], makeOnChange(setting.id), setting.placeholder);
+        } else if (setting.type === 'file') {
+          widget = createFile(
+            setting.id,
+            state[setting.id],
+            makeOnChange(setting.id),
+            (dataUrl) => {
+              state._backgroundImageDataUrl = dataUrl;
+              if (dataUrl) dirtyIds.add(setting.id);
+              else updateDirty(setting.id);
+              notifyPreview();
+            },
+            setting.placeholder,
+          );
         } else if (setting.type === 'number') {
           widget = createNumber(setting.id, state[setting.id], makeOnChange(setting.id), setting);
         } else if (setting.type === 'range') {
@@ -1129,7 +1197,9 @@ export function createConfigPanel(initialConfigText, onApply, onBgImage) {
         } else if (setting.type === 'color') {
           widget = createColor(setting.id, state[setting.id], makeOnChange(setting.id));
         } else if (setting.type === 'theme') {
-          widget = createThemePicker(setting.id, state[setting.id], makeOnChange(setting.id), themeNames);
+          widget = createThemePicker(setting.id, state[setting.id], value => {
+            void selectTheme(value);
+          }, themeNames);
         }
 
         if (widget) controlWrap.appendChild(widget);
@@ -1142,8 +1212,18 @@ export function createConfigPanel(initialConfigText, onApply, onBgImage) {
     }
   }
 
+  function closeWithoutApplying() {
+    state = structuredClone(initialState);
+    dirtyIds.clear();
+    for (const key of Object.keys(dirtyBaselines)) delete dirtyBaselines[key];
+    notifyPreview();
+    panel.classList.remove('visible');
+    showPanel(activePanelId);
+  }
+
   // Show first panel by default
   showPanel(SETTINGS_PANELS[0].id);
+  if (initialState.theme) void selectTheme(initialState.theme, false);
 
   return panel;
 }

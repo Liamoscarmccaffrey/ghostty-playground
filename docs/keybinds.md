@@ -38,13 +38,20 @@ These actions work when assigned as a keybind.
 | `last_tab` | Switch to last tab | Switches to the last tab |
 | `goto_tab:N` | Switch to tab N | Switches to tab N |
 | `close_tab` | Close current tab | Closes the current tab |
+| `new_split`, `new_split:right` | Split the current pane to the right | Creates a fixed-grid pane to the right |
+| `new_split:down` | Split the current pane below | Creates a fixed-grid pane below |
+| `goto_split:DIR` | Focus a neighboring split | Moves focus left, right, up, or down |
+| `goto_split:previous`, `goto_split:next` | Focus splits sequentially | Moves through panes in layout order |
+| `toggle_split_zoom` | Zoom or restore the active split | Shows only the active pane until toggled again |
+| `resize_split:DIR,N` | Resize the active split | Moves the nearest divider by N pixels |
+| `equalize_splits` | Equalize split sizes | Rebalances all split ratios |
 | `text:\xNN` | Send literal bytes to the PTY | Sends bytes to the PTY |
 | `esc:X` | Send ESC + X to the PTY | Sends `\x1b` + X to the PTY |
 | `scroll_lines:N` | Scroll N lines | Calls `term.scrollLines(N)` |
 
 ---
 
-## Recently implemented (was green)
+## Additional implemented actions
 
 | Action | Browser behaviour |
 | --- | --- |
@@ -54,15 +61,16 @@ These actions work when assigned as a keybind.
 | `scroll_page_lines:N` | `term.scrollLines(N)` |
 | `scroll_page_fractional:F` | `term.scrollLines(Math.round(term.rows * F))` |
 | `set_font_size:N` | `term.options.fontSize = N` |
-| `close_surface` | `window.close()` |
+| `close_surface` | Closes the active pane, or its tab when it is the only pane |
 | `close_window` | `window.close()` |
 | `close_all_windows` | `window.close()` |
 | `quit` | `window.close()` |
 | `toggle_maximize` | Fullscreen API, same as `toggle_fullscreen` |
 | `inspector:show` | Same as `inspector:toggle` |
 | `inspector:hide` | Same as `inspector:toggle` |
-| `toggle_background_opacity` | Toggles the background image overlay between its configured opacity and fully hidden |
 | `toggle_readonly` | Flips a readonly flag -- when set, all keyboard input is swallowed before reaching the PTY |
+| `toggle_background_opacity` | Toggles between the configured background opacity and fully opaque |
+| `toggle_window_decorations` | Toggles the playground header decoration while retaining browser tabs |
 | `csi:sequence` | Sends `\x1b[` + the sequence argument to the PTY |
 | `write_selection_file:copy` | Copies `term.getSelection()` to clipboard |
 | `reset` | `term.reset()` |
@@ -91,7 +99,6 @@ These actions work when assigned as a keybind.
 | 🟢 | `toggle_maximize` | Maximize / restore the window | Use the Fullscreen API, same as `toggle_fullscreen` |
 | 🟢 | `inspector:show` | Show the inspector panel | Same as `inspector:toggle` |
 | 🟢 | `inspector:hide` | Hide the inspector panel | Same as `inspector:toggle` |
-| 🟢 | `toggle_background_opacity` | Cycle the window background opacity | Toggle between the configured background opacity and fully opaque |
 | 🟢 | `toggle_readonly` | Block keyboard input from reaching the PTY | Track a flag; when set, suppress input in the `onData` handler |
 | 🟢 | `csi:sequence` | Send a raw CSI escape sequence to the PTY | Send `\x1b[` + the sequence argument to `podTerm.readData` |
 | 🟢 | `write_selection_file:copy` | Write the current selection to a file, copy path | `term.getSelection()` to clipboard -- same as `copy_to_clipboard` |
@@ -117,26 +124,10 @@ These actions work when assigned as a keybind.
 | 🔴 | `search_selection` | Open search pre-filled with selected text | Open the overlay with `term.getSelection()` as the initial query |
 | 🔴 | `navigate_search:next` | Move to the next search match | Step forward through matches in the overlay |
 | 🔴 | `navigate_search:previous` | Move to the previous search match | Step backward through matches |
-| 🔴 | `jump_to_prompt:1` | Jump forward to the next shell prompt | Requires OSC 133 shell integration to mark prompt positions in scrollback |
+| 🔴 | `jump_to_prompt:1` | Jump forward to the next shell prompt | OSC 133 integration is active, but ghostty-web does not expose prompt positions for scrollback navigation |
 | 🔴 | `jump_to_prompt:-1` | Jump backward to the previous shell prompt | Same |
 | 🔴 | `toggle_tab_overview` | Show a visual overview of all open tabs | Show a grid of tab thumbnails as an overlay; click one to switch |
 | 🔴 | `toggle_command_palette` | Open the command palette | Floating palette listing all available actions, filterable by typing |
-| 🔴 | `new_split` | Split the current surface horizontally | Requires a split pane layout layer -- divide the terminal area into resizable panes |
-| 🔴 | `new_split:right` | Add a vertical split to the right | Same |
-| 🔴 | `new_split:down` | Add a horizontal split below | Same |
-| 🔴 | `goto_split:right` | Focus the split to the right | Requires the split layout layer |
-| 🔴 | `goto_split:left` | Focus the split to the left | Same |
-| 🔴 | `goto_split:up` | Focus the split above | Same |
-| 🔴 | `goto_split:down` | Focus the split below | Same |
-| 🔴 | `goto_split:previous` | Focus the previously active split | Same |
-| 🔴 | `goto_split:next` | Focus the next split in order | Same |
-| 🔴 | `toggle_split_zoom` | Zoom the current split to fill the window | Same |
-| 🔴 | `resize_split:right,N` | Widen the current split by N columns | Same |
-| 🔴 | `resize_split:left,N` | Narrow the current split by N columns | Same |
-| 🔴 | `equalize_splits` | Make all splits equal size | Same |
-
----
-
 ## Not supported in the browser
 
 These actions are present in the config panel UI but will never do anything here. They are listed so users know they can be skipped when configuring keybinds.
@@ -146,7 +137,6 @@ These actions are present in the config panel UI but will never do anything here
 | `new_window` | Open a new Ghostty window with its own BrowserPod session | Each browser tab boots an independent BrowserPod instance -- there is no way to share a running pod across tabs, so a second window would be a completely separate disconnected session, not a second view into the same one |
 | `toggle_quick_terminal` | Slide in a system-wide overlay terminal from any app | Requires OS-level access to draw above other applications -- not possible from a browser tab |
 | `toggle_visibility` | Hide or show the Ghostty window | A page cannot hide the browser tab it is running in |
-| `toggle_window_decorations` | Show or hide the native OS title bar | The browser chrome and window decorations are controlled by the OS, not by the page |
 | `toggle_window_float_on_top` | Pin the window above all other windows | OS-level window management -- no browser API exists for this |
 | `reset_window_size` | Reset the window to its default dimensions | `window.resizeTo()` is blocked in all major browsers unless the window was opened by script |
 | `toggle_secure_input` | Block other applications from reading keyboard input | OS-level input isolation -- not available to a web page |
