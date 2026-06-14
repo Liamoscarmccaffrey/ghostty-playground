@@ -1,6 +1,15 @@
-# Ghostty Web
+# Ghostty Playground
 
-A browser-based terminal using the Ghostty rendering engine and a BrowserPod Linux sandbox. It looks and behaves like a desktop Ghostty terminal, within the constraints of what a browser can do.
+A browser-based terminal using the Ghostty rendering engine and a BrowserPod Linux sandbox. It aims to look and behave like a desktop Ghostty terminal, within the constraints of what a browser can do.
+
+**This is a work in progress.** Many Ghostty features either have no browser equivalent or are not yet implemented. See [docs/keybinds.md](docs/keybinds.md) for a full breakdown of what works, what is planned, and what cannot be supported in a browser.
+
+## Credits
+
+- **[ghostty-web](https://github.com/crunchloop/ghostty-web)** (`@crunchloop/ghostty-web`) — the official Ghostty terminal engine compiled to WebAssembly, by Crunchloop. This project is a fork of their repository.
+- **[BrowserPod](https://leaningtech.com/browserpod/)** (`@leaningtech/browserpod`) — the in-browser Linux sandbox, by Leaning Technologies.
+- **[ghostty-config](https://github.com/zerebos/ghostty-config)** — a visual Ghostty config editor by zerebos, which the config panel in this project is based on.
+- **[tree-sitter-ghostty](https://github.com/bezhermoso/tree-sitter-ghostty)** — the Tree-sitter grammar for Ghostty config syntax, used for config file syntax highlighting.
 
 ## Architecture
 
@@ -17,16 +26,21 @@ BrowserPod exposes a custom terminal with `onOutput` (bytes from the PTY) and `r
 
 Config is parsed from `ghostty-config` (same key=value format as the desktop app) and passed to the Ghostty Terminal constructor at boot. Changes require a page reload — applying theme or font changes live via the renderer API causes a blank canvas, so config is saved to `localStorage` and the page reloads.
 
-## Limitations
+## Current limitations
 
-These are real, not fixable without changes to the underlying libraries:
+Some of these are fundamental browser constraints, others are features not yet built:
 
-- **`bold-is-bright`** — not exposed in the `@crunchloop/ghostty-web` API
-- **`minimum-contrast`** — not exposed
-- **`window-opacity` / transparency effects** — `allow-transparency = true` is wired up but actual background opacity depends on CSS; there is no compositor
-- **`working-directory`** — BrowserPod always starts in the pod's home directory; there is no API to set an initial working directory
-- **Terminal resize** — BrowserPod's custom terminal locks its PTY dimensions at creation; there is no resize method, so the terminal is fixed at whatever size it fits to on boot
-- **`shell-prompt`** sets `PS1` via the `env` option on `pod.run()` — it only applies to the initial shell, not subshells
+- **Split panes** — not yet implemented. Each tab runs a single terminal. Split layout support is planned.
+- **`bold-is-bright`** — not exposed in the `@crunchloop/ghostty-web` API.
+- **`minimum-contrast`** — not exposed in the API.
+- **`window-opacity`** — `allow-transparency = true` is wired up but actual background opacity depends on CSS; there is no compositor.
+- **`working-directory`** — BrowserPod always starts in the pod's home directory; there is no API to set an initial working directory.
+- **Terminal resize** — BrowserPod's custom terminal locks its PTY dimensions at creation; there is no resize method, so the terminal is fixed at the size it fits to on boot.
+- **`shell-prompt`** — sets `PS1` via the `env` option on `pod.run()`; it only applies to the initial shell, not subshells.
+- **Multiple windows** — each browser tab boots its own independent BrowserPod instance. There is no way to share a running pod across tabs, so `new_window` cannot be supported.
+- **Many keybind actions** — the Ghostty keybind action list includes OS-level and window-management actions that have no browser equivalent. See [docs/keybinds.md](docs/keybinds.md) for the full picture.
+- **Search** — in-terminal search is not yet implemented.
+- **Jump to prompt** — requires OSC 133 shell integration, which is not yet wired up.
 
 ## Getting started
 
@@ -35,7 +49,7 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:5173`. You need a BrowserPod API key in a `.env` file:
+Open `http://localhost:5173`. A BrowserPod API key is required in a `.env` file:
 
 ```env
 VITE_BP_APIKEY=your_key_here
@@ -89,13 +103,20 @@ Individual color keys in the config are merged on top of the named theme, so you
 ## Project structure
 
 ```
-main.js           — Terminal constructor, BrowserPod bridge, config parsing, UI setup
-ghostty-config    — Default config (key=value, same format as ~/.config/ghostty/config)
-index.html        — UI shell: terminal container, config dialog, inspector panel, context menu
+main.js             — Terminal constructor, BrowserPod bridge, config parsing, UI setup
+config-panel.js     — Visual config editor panel (themes, fonts, keybinds, background image)
+config-highlight.js — Syntax highlighting for the config editor, powered by tree-sitter-ghostty
+ghost-animation.js  — Pre-generated ghost animation frames (ported from the Ghostty animation command)
+ghostty-config      — Default config (key=value, same format as ~/.config/ghostty/config)
+index.html          — UI shell: terminal container, tab bar, config dialog, inspector, context menu
+docs/
+  keybinds.md       — Full keybind action reference: implemented, planned, and unsupported
 public/
-  themes/         — 516 Ghostty theme files (plain key=value, fetched at boot if theme= is set)
-  coi-serviceworker.js  — Injects COOP/COEP headers via service worker for hosts that can't set them
-vite.config.js    — Sets COOP/COEP headers for dev server; targets esnext for top-level await
+  themes/           — 516 Ghostty theme files (plain key=value, fetched at boot if theme= is set)
+  tree-sitter-ghostty.wasm  — Compiled Tree-sitter grammar for Ghostty config syntax
+  tree-sitter.wasm          — Tree-sitter runtime
+  coi-serviceworker.js      — Injects COOP/COEP headers for hosts that cannot set them
+vite.config.js      — Sets COOP/COEP headers for dev server; targets esnext for top-level await
 ```
 
 ## Build and deploy
@@ -111,12 +132,13 @@ Cross-Origin-Embedder-Policy: require-corp
 Cross-Origin-Opener-Policy: same-origin
 ```
 
-These are required for `SharedArrayBuffer`, which BrowserPod uses for its worker communication. If the host can't set custom headers (e.g. GitHub Pages), the bundled `coi-serviceworker.js` adds them at runtime via a service worker — it's already wired into `index.html`.
+These are required for `SharedArrayBuffer`, which BrowserPod uses for its worker communication. If the host cannot set custom headers (e.g. GitHub Pages), the bundled `coi-serviceworker.js` adds them at runtime via a service worker — it is already wired into `index.html`.
 
 ## Right-click menu
 
 - **Copy / Paste**
+- **About** — shows the ghost animation and project info
 - **Open Inspector** — live view of terminal grid, cursor position, VT modes, colour palette, I/O stream log
-- **Edit Config** — in-page config editor; Cmd/Ctrl+Enter to apply, Escape to cancel
-- **Set Title** — changes the tab title and header
+- **Edit Config** — in-page config editor with theme browser, font controls, keybind editor, and background image support
+- **Set Title** — changes the tab title
 - **Reset** — reloads the page and reboots the pod
