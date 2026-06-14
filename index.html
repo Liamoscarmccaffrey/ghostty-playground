@@ -3,23 +3,45 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>ghostty-web</title>
+    <title>Ghostty Playground — Ghostty terminal online in your browser</title>
+    <meta name="description" content="Run a real Ghostty terminal emulator directly in your browser. Supports Ghostty config format, 500+ themes, custom keybindings, and multi-tab sessions. No install required." />
+    <meta name="keywords" content="ghostty, ghostty web, ghostty online, ghostty terminal, ghostty browser, ghostty config, ghostty playground, ghostty themes, terminal emulator online" />
+
+    <!-- Open Graph -->
+    <meta property="og:type" content="website" />
+    <meta property="og:title" content="Ghostty Playground — Ghostty terminal online in your browser" />
+    <meta property="og:description" content="Run a real Ghostty terminal emulator directly in your browser. Supports Ghostty config format, 500+ themes, custom keybindings, and multi-tab sessions. No install required." />
+    <meta property="og:site_name" content="Ghostty Playground" />
+    <meta property="og:image" content="https://ghostty.leaningtech.com/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+
+    <!-- Twitter -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="Ghostty Playground — Ghostty terminal online in your browser" />
+    <meta name="twitter:description" content="Run a real Ghostty terminal emulator directly in your browser. Supports Ghostty config format, 500+ themes, custom keybindings, and multi-tab sessions. No install required." />
+    <meta name="twitter:image" content="https://ghostty.leaningtech.com/og-image.png" />
+
+    <link rel="canonical" href="https://ghostty.leaningtech.com/" />
+    <link rel="icon" type="image/svg+xml" href="/ghostty-icon.svg" />
+
     <!-- Establish cross-origin isolation (for SharedArrayBuffer) before the
          app module runs. Must come first in <head>. -->
     <script src="/coi-serviceworker.js"></script>
     <style>
       *, *::before, *::after { box-sizing: border-box; }
 
-      html, body {
+      html {
         margin: 0;
-        height: 100%;
         background: #1a1b26;
       }
       body {
+        margin: 0;
         display: flex;
         flex-direction: column;
         font-family: system-ui, sans-serif;
         color: #a9b1d6;
+        background: #1a1b26;
       }
 
       header {
@@ -92,14 +114,13 @@
       #tab-add:hover { color: #a9b1d6; }
 
       #main {
-        flex: 1;
-        min-height: 0;
+        height: calc(100vh - 36px);
         display: flex;
+        flex-direction: column;
       }
 
       #terminals {
         flex: 1;
-        min-width: 0;
         min-height: 0;
         position: relative;
       }
@@ -112,6 +133,67 @@
       .terminal-instance.active {
         display: block;
       }
+
+      #page-content {
+        background: #13141f;
+        padding: 64px 48px;
+        display: flex;
+        flex-direction: column;
+        gap: 48px;
+      }
+      .pc-section {
+        max-width: 760px;
+      }
+      .pc-section h2 {
+        margin: 0 0 12px;
+        font-size: 20px;
+        font-weight: 700;
+        color: #c0caf5;
+        letter-spacing: -0.01em;
+      }
+      .pc-section p {
+        margin: 0 0 10px;
+        font-size: 14px;
+        color: #a9b1d6;
+        line-height: 1.7;
+      }
+      .pc-section p:last-child { margin-bottom: 0; }
+      .pc-section ul {
+        margin: 0;
+        padding-left: 20px;
+        font-size: 14px;
+        color: #a9b1d6;
+        line-height: 1.8;
+      }
+      .pc-chips {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+        margin-top: 14px;
+      }
+      .pc-chip {
+        font-size: 12px;
+        color: #7aa2f7;
+        background: #1a1b2e;
+        border: 1px solid #2a2b3d;
+        border-radius: 4px;
+        padding: 3px 10px;
+        font-family: ui-monospace, 'SF Mono', monospace;
+      }
+      .pc-footer {
+        padding: 32px 48px;
+        border-top: 1px solid #1e1f2e;
+        font-size: 12px;
+        color: #565f89;
+        display: flex;
+        gap: 20px;
+        flex-wrap: wrap;
+      }
+      .pc-footer a {
+        color: #565f89;
+        text-decoration: none;
+      }
+      .pc-footer a:hover { color: #a9b1d6; }
 
       /* Inspector panel — fixed overlay, slides up from bottom */
       #inspector {
@@ -1142,6 +1224,55 @@
         </div>
       </div>
     </div>
+
+    <!-- Below-fold content for SEO and context -->
+    <div id="page-content">
+
+      <div class="pc-section">
+        <img src="/ghostty-wordmark.svg" alt="Ghostty" style="height:36px;margin-bottom:24px;display:block;" />
+        <h2>Ghostty in your browser</h2>
+        <p>Ghostty Playground runs the real Ghostty terminal engine — the same WebAssembly core as the desktop app — directly in your browser tab. There is nothing to install. Open the page and you have a full Linux shell running inside a BrowserPod sandbox.</p>
+        <p>It supports the Ghostty config file format, so you can paste in your existing <code>~/.config/ghostty/config</code> and have your fonts, colours, cursor style, and keybindings working immediately. Right-click the terminal and choose <strong>Config Panel</strong> to browse 500+ bundled themes.</p>
+      </div>
+
+      <div class="pc-section">
+        <h2>What works</h2>
+        <ul>
+          <li>Ghostty config format — same key=value syntax as the desktop app</li>
+          <li>500+ themes from the official Ghostty catalogue</li>
+          <li>Custom keybindings with Ghostty's full action syntax</li>
+          <li>Multi-tab sessions, each with its own shell</li>
+          <li>Persistent filesystem via browser storage</li>
+          <li>Kitty keyboard protocol (Ctrl+key combos, modifier keys)</li>
+          <li>Terminal Inspector — live view of VT modes, cursor, palette, I/O stream</li>
+        </ul>
+        <div class="pc-chips">
+          <span class="pc-chip">ghostty config</span>
+          <span class="pc-chip">ghostty themes</span>
+          <span class="pc-chip">ghostty keybinds</span>
+          <span class="pc-chip">ghostty online</span>
+          <span class="pc-chip">ghostty web</span>
+          <span class="pc-chip">terminal in browser</span>
+        </div>
+      </div>
+
+      <div class="pc-section">
+        <h2>Built on</h2>
+        <p><strong>ghostty-web</strong> by Crunchloop — the official Ghostty terminal engine compiled to WebAssembly.</p>
+        <p><strong>BrowserPod</strong> by Leaning Technologies — a full Linux environment running in-browser via WebAssembly.</p>
+        <p><strong>ghostty-config</strong> by zerebos — the visual config editor this project's config panel is based on.</p>
+        <p><strong>tree-sitter-ghostty</strong> — the Tree-sitter grammar for Ghostty config syntax highlighting.</p>
+      </div>
+
+    </div>
+
+    <footer class="pc-footer">
+      <span>Ghostty Playground</span>
+      <a href="https://github.com/Liamoscarmccaffrey/ghostty-playground" target="_blank" rel="noopener">GitHub</a>
+      <a href="https://ghostty.org" target="_blank" rel="noopener">ghostty.org</a>
+      <a href="https://github.com/crunchloop/ghostty-web" target="_blank" rel="noopener">ghostty-web</a>
+      <a href="https://leaningtech.com/browserpod/" target="_blank" rel="noopener">BrowserPod</a>
+    </footer>
 
     <script type="module" src="/main.js"></script>
   </body>
