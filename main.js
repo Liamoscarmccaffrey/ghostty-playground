@@ -748,13 +748,24 @@ const HOST_COMMAND_MARKER_PREFIX = new TextEncoder().encode(
 );
 const HOST_COMMAND_MARKER_END = 0x07;
 
-const LOCAL_MODEL_SHELL_BOOTSTRAP = [
+// Define the host-bridge function in an rcfile that the interactive shell
+// sources, rather than `export -f`. Exporting a hyphenated bash function puts
+// a malformed `BASH_FUNC_ghostty-ai%%` entry in the environment, which corrupts
+// the env inherited by child processes (npm/node crash with "this should be
+// unreachable"). Sourcing keeps `ghostty-ai` available at the prompt without
+// polluting the environment.
+const LOCAL_MODEL_SHELL_RCFILE = [
   'ghostty-ai() {',
   "  printf '\\033]777;ghostty-ai-ready;raw:%s\\007' \"$*\"",
   '  IFS= read -r _ghostty_ai_resume',
   '}',
-  'export -f ghostty-ai',
-  'exec bash --norc -i',
+].join('\n');
+
+const LOCAL_MODEL_SHELL_BOOTSTRAP = [
+  `cat > /tmp/.ghostty-airc <<'GHOSTTY_RC'`,
+  LOCAL_MODEL_SHELL_RCFILE,
+  'GHOSTTY_RC',
+  'exec bash --rcfile /tmp/.ghostty-airc -i',
 ].join('\n');
 
 function findByteSequence(bytes, sequence, start = 0) {
