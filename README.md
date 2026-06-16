@@ -9,6 +9,7 @@ A browser-based terminal using the Ghostty rendering engine and a BrowserPod Lin
 - **[ghostty-web](https://github.com/crunchloop/ghostty-web)** (`@crunchloop/ghostty-web`) — the official Ghostty terminal engine compiled to WebAssembly, by Crunchloop. This project is a fork of their repository.
 - **[BrowserPod](https://leaningtech.com/browserpod/)** (`@leaningtech/browserpod`) — the in-browser Linux sandbox, by Leaning Technologies.
 - **[WebLLM](https://github.com/mlc-ai/web-llm)** (`@mlc-ai/web-llm`) — WebGPU model loading and local inference using models hosted on Hugging Face.
+- **[Vexi](https://github.com/Elomami1976/vexi)** — provider detection, streaming provider adapters, and agent command-loop ideas adapted for the browser.
 - **[ghostty-config](https://github.com/zerebos/ghostty-config)** — a visual Ghostty config editor by zerebos, which the config panel in this project is based on.
 - **[tree-sitter-ghostty](https://github.com/bezhermoso/tree-sitter-ghostty)** — the Tree-sitter grammar for Ghostty config syntax, used for config file syntax highlighting.
 
@@ -27,8 +28,8 @@ BrowserPod exposes a custom terminal with `onOutput` (bytes from the PTY) and `r
 
 Config is parsed from `ghostty-config` (same key=value format as the desktop app) and passed to the Ghostty Terminal constructor at boot. The visual panel previews appearance changes without rebuilding terminals; Apply merges only edited settings into the existing config and reloads when persistence or process creation requires it.
 
-**Experimental local inference — WebLLM**
-The `ghostty-ai` terminal command downloads a selected MLC model from Hugging Face and runs it locally with WebGPU. Inference runs in the host page, while a small shell bridge keeps streamed model output ordered with the BrowserPod prompt. It is deliberately not an agent: it cannot execute commands, inspect the filesystem, or use tools.
+**Ghostty AI — Vexi-style harness + WebLLM**
+The `ghostty-ai` terminal command uses a browser-friendly version of Vexi's provider harness. It can stream from OpenAI-compatible APIs, Anthropic's Messages API, OpenRouter, Groq, Gemini, or the local WebGPU models loaded through WebLLM. The shell bridge keeps streamed model output ordered with the BrowserPod prompt. When an agent response includes file artifacts, Ghostty can write them into the BrowserPod filesystem after confirmation. It does not install packages or start servers for you.
 
 ## Current limitations
 
@@ -43,6 +44,8 @@ Some of these are fundamental browser constraints, others are features not yet b
 - **Search** — in-terminal search is not yet implemented.
 - **Jump to prompt keybinds** — OSC 133 prompt integration is present for click-to-move, but ghostty-web does not expose the stored prompt positions needed for scrollback navigation.
 - **Local model resources** — model downloads range from roughly 350 MB to 4.7 GB and require WebGPU, a secure context (HTTPS or localhost), sufficient GPU memory, and a browser/device capable of running the selected model. One model and one generation are active across all panes at a time.
+- **API agent keys** — provider calls are made directly from the browser with bring-your-own API keys stored in `localStorage`. This is convenient for local use, but the page origin can read the key. Some providers or browsers may also block direct browser API calls.
+- **Agent file writes** — Ghostty can detect file artifacts and write confirmed files to `/home/user`. Package installation and server startup are left to the visible terminal.
 
 ## Getting started
 
@@ -57,7 +60,19 @@ Open `http://localhost:5173`. A BrowserPod API key is required in a `.env` file:
 VITE_BP_APIKEY=your_key_here
 ```
 
-## Experimental local models
+## Ghostty AI agents and local models
+
+Configure an API provider from inside any terminal pane:
+
+```bash
+ghostty-ai setup openai
+ghostty-ai use anthropic
+ghostty-ai model claude-sonnet-4-5
+ghostty-ai ask Explain this error
+ghostty-ai write Create a README for this project
+```
+
+The setup prompt stores your key in browser `localStorage`. Provider detection follows Vexi's key-prefix rules for Anthropic, OpenRouter, Groq, Gemini and OpenAI. The same `ghostty-ai ask` command works with local models once a model is loaded.
 
 List and load a model from inside any terminal pane:
 
@@ -67,12 +82,16 @@ ghostty-ai load 5
 ghostty-ai ask Explain why a shell pipeline can deadlock
 ```
 
-The shorter `ghostty-ai <prompt>` form also starts a conversation. Conversation history is kept separately for each pane and is cleared when the loaded model changes.
+`ghostty-ai ask` is normal chat. Local WebGPU models are chat-only. `ghostty-ai write` is the API-provider file-writing mode; it asks before writing artifacts to BrowserPod and reports each written path. None of these commands install packages or start servers.
+
+The shorter `ghostty-ai <prompt>` form also starts a conversation. Conversation history is kept separately for each pane and is cleared when the provider or loaded local model changes.
 
 ```bash
+ghostty-ai providers
 ghostty-ai status
 ghostty-ai clear
 ghostty-ai unload
+ghostty-ai reset
 ```
 
 Downloads are cached by WebLLM in browser storage. `Ctrl-C` interrupts generation; model loading itself is not safely interruptible. The available models are:

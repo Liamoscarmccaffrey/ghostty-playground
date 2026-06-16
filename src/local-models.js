@@ -140,7 +140,7 @@ class LocalModelRuntime {
     }
   }
 
-  async generate(messages, onText, signal) {
+  async generate(messages, onText, signal, options = {}) {
     if (this.loadingPromise) {
       throw new Error(`Wait for ${this.loadingModel?.label ?? 'the model'} to finish loading.`);
     }
@@ -159,14 +159,17 @@ class LocalModelRuntime {
     signal?.addEventListener('abort', interrupt, { once: true });
 
     try {
+      const promptMessages = options.includeDefaultSystem === false
+        ? messages
+        : [
+            { role: 'system', content: SYSTEM_PROMPT },
+            ...messages,
+          ];
       const stream = await this.engine.chat.completions.create({
         stream: true,
         temperature: 0.7,
         max_tokens: 768,
-        messages: [
-          { role: 'system', content: SYSTEM_PROMPT },
-          ...messages,
-        ],
+        messages: promptMessages,
       });
 
       let result = '';

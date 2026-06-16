@@ -13,6 +13,19 @@ import {
   localModelRuntime,
   resolveLocalModel,
 } from './src/local-models.js';
+import {
+  ProviderError,
+  configuredModel,
+  detectProvider,
+  formatProviderList,
+  loadAgentConfig,
+  resetAgentConfig,
+  resolveProviderId,
+  runAgentTurn,
+  sanitizeKey,
+  saveAgentConfig,
+  PROVIDER_INFO,
+} from './src/vexi-harness.js';
 // Reset saved config if the bundled config has changed (e.g. after an update).
 if (localStorage.getItem('ghostty-config-hash') !== btoa(bundledConfigText.slice(0, 64))) {
   localStorage.removeItem('ghostty-config');
@@ -1994,32 +2007,376 @@ async function main() {
     }
   }
 
-  function localModelHelp() {
+  function agentHelp() {
     return [
-      'Experimental local inference commands:',
+      'Ghostty AI commands:',
+      '  ghostty-ai setup [provider]      add an API key, or select local WebGPU with setup local',
+      '  ghostty-ai providers             list API and local providers',
+      '  ghostty-ai use <provider>        switch provider: local, openai, anthropic, openrouter, groq, gemini',
+      '  ghostty-ai model [model-id]      show or set the API model for the current provider',
       '  ghostty-ai models',
       '  ghostty-ai load <number|model-id>',
+      '  ghostty-ai write <prompt>       create or edit files after confirmation',
       '  ghostty-ai ask <prompt>',
       '  ghostty-ai <prompt>              shorthand for ask',
       '  ghostty-ai status',
       '  ghostty-ai clear                 clear this pane conversation',
       '  ghostty-ai unload                release model memory',
+      '  ghostty-ai reset                 remove saved API config from this browser',
       '',
-      'Models run in the browser with WebGPU. They cannot execute terminal commands or use tools.',
+      'API providers stream through the browser using your own key.',
+      'Local models run in the browser with WebGPU.',
+      '`ask` is normal chat. `write` is the file-writing mode. Nothing installs or starts automatically.',
     ].join('\r\n');
   }
 
-  async function runLocalModelCommand(pane, commandLine) {
+  function providerSummary(config) {
+    const provider = resolveProviderId(config.provider) ?? 'local';
+    const info = PROVIDER_INFO[provider];
+    return `${info.label}, model: ${configuredModel(config, localModelRuntime)}`;
+  }
+
+  function promptForApiConfig(preferredProvider, suppliedKey = '') {
+    const key = sanitizeKey(suppliedKey || window.prompt(
+      'Paste your API key. It will be stored in this browser only.',
+      '',
+    ));
+    if (!key) throw new Error('No API key entered.');
+
+    let provider = resolveProviderId(preferredProvider) ?? detectProvider(key);
+    if (!provider || provider === 'local') {
+      provider = resolveProviderId(window.prompt(
+        'Provider was not detected. Enter one of: openai, anthropic, openrouter, groq, gemini',
+        'openai',
+      ));
+    }
+    if (!provider || provider === 'local' || !PROVIDER_INFO[provider]?.requiresKey) {
+      throw new Error('Unknown API provider.');
+    }
+
+    const current = loadAgentConfig();
+    const savedModel = current.models?.[provider] ||
+      (current.provider === provider ? current.model : '');
+    return saveAgentConfig({
+      provider,
+      apiKey: key,
+      model: savedModel || PROVIDER_INFO[provider].defaultModel,
+    });
+  }
+
+  function switchProvider(providerQuery) {
+    const provider = resolveProviderId(providerQuery);
+    if (!provider) throw new Error(`Unknown provider "${providerQuery}". Run \`ghostty-ai providers\`.`);
+
+    if (provider === 'local') {
+      return saveAgentConfig({ provider: 'local' });
+    }
+
+    const current = loadAgentConfig();
+    if (current.provider === provider && current.apiKey) return current;
+    if (current.apiKeys?.[provider]) {
+      return saveAgentConfig({
+        provider,
+        apiKeys: current.apiKeys,
+        models: current.models,
+      });
+    }
+
+    return promptForApiConfig(provider);
+  }
+
+  function normalizeAgentFilePath(path) {
+    let value = String(path ?? '').trim().replace(/\\/g, '/');
+    if (!value) throw new Error('File artifact is missing a path.');
+    if (value.startsWith('/home/user/')) {
+      value = value.slice('/home/user/'.length);
+    }
+    if (value.startsWith('/') || value.split('/').some(part => part === '..')) {
+      throw new Error(`Unsafe file path "${path}". Use a relative path inside /home/user.`);
+    }
+    value = value.replace(/^\.\//, '');
+    if (!value || value === '.') throw new Error(`Unsafe file path "${path}".`);
+    return {
+      relative: value,
+      absolute: `/home/user/${value}`,
+    };
+  }
+
+  function parentDirectory(path) {
+    const index = path.lastIndexOf('/');
+    return index === -1 ? '' : path.slice(0, index);
+  }
+
+  const NODE_BUILTIN_MODULES = new Set([
+    'assert', 'buffer', 'child_process', 'cluster', 'console', 'crypto', 'dgram',
+    'dns', 'domain', 'events', 'fs', 'http', 'http2', 'https', 'module', 'net',
+    'os', 'path', 'perf_hooks', 'process', 'punycode', 'querystring', 'readline',
+    'repl', 'stream', 'string_decoder', 'timers', 'tls', 'tty', 'url', 'util',
+    'v8', 'vm', 'worker_threads', 'zlib',
+  ]);
+
+  function generatedFilePathSet(fileBlocks) {
+    return new Set(fileBlocks.map(block => String(block.path ?? '').replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase()));
+  }
+
+  function isJavaScriptFile(path) {
+    return /\.(?:cjs|mjs|js|jsx|ts|tsx)$/i.test(String(path ?? '')) && !/\.d\.ts$/i.test(String(path ?? ''));
+  }
+
+  function packageNameForImport(specifier) {
+    const value = String(specifier ?? '').trim();
+    if (!value || value.startsWith('.') || value.startsWith('/') || value.startsWith('node:')) return '';
+    const parts = value.split('/');
+    const name = value.startsWith('@') ? parts.slice(0, 2).join('/') : parts[0];
+    return NODE_BUILTIN_MODULES.has(name) ? '' : name;
+  }
+
+  function inferNodeDependencies(fileBlocks) {
+    const dependencies = new Set();
+    const patterns = [
+      /\brequire\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
+      /\bimport\s+(?:[^'"]+\s+from\s+)?['"]([^'"]+)['"]/g,
+      /\bimport\s*\(\s*['"]([^'"]+)['"]\s*\)/g,
+    ];
+
+    for (const block of fileBlocks) {
+      if (!isJavaScriptFile(block.path)) continue;
+      for (const pattern of patterns) {
+        pattern.lastIndex = 0;
+        let match = pattern.exec(block.content);
+        while (match) {
+          const name = packageNameForImport(match[1]);
+          if (name) dependencies.add(name);
+          match = pattern.exec(block.content);
+        }
+      }
+    }
+    return [...dependencies].sort();
+  }
+
+  function inferNodeEntryFile(fileBlocks) {
+    const jsFiles = fileBlocks.filter(block => isJavaScriptFile(block.path));
+    return jsFiles.find(block => /\bapp\.listen\s*\(/.test(block.content)) ||
+      jsFiles.find(block => /(?:^|\/)(?:server|app|index)\.(?:cjs|mjs|js|ts)$/i.test(block.path)) ||
+      jsFiles[0] ||
+      null;
+  }
+
+  function stripJsonTrailingCommas(content) {
+    return String(content ?? '').replace(/,\s*([}\]])/g, '$1');
+  }
+
+  function packageHasDependency(packageJson, dependency) {
+    return ['dependencies', 'devDependencies', 'peerDependencies', 'optionalDependencies']
+      .some(section => Object.hasOwn(packageJson[section] ?? {}, dependency));
+  }
+
+  function mergePackageJsonBlock(block, entryFilePath, dependencies) {
+    let packageJson;
+    try {
+      packageJson = JSON.parse(stripJsonTrailingCommas(block.content));
+    } catch {
+      return false;
+    }
+    if (!packageJson || typeof packageJson !== 'object' || Array.isArray(packageJson)) {
+      return false;
+    }
+
+    if (!packageJson.main && entryFilePath) packageJson.main = entryFilePath;
+    packageJson.scripts = {
+      ...(packageJson.scripts && typeof packageJson.scripts === 'object' ? packageJson.scripts : {}),
+    };
+    if (!packageJson.scripts.start && entryFilePath) {
+      packageJson.scripts.start = `node ${entryFilePath}`;
+    }
+
+    packageJson.dependencies = {
+      ...(packageJson.dependencies && typeof packageJson.dependencies === 'object' ? packageJson.dependencies : {}),
+    };
+    for (const dependency of dependencies) {
+      if (!packageHasDependency(packageJson, dependency)) {
+        packageJson.dependencies[dependency] = 'latest';
+      }
+    }
+
+    block.content = `${JSON.stringify(packageJson, null, 2)}\n`;
+    return true;
+  }
+
+  function maybeCompleteProjectFiles(prompt, fileBlocks) {
+    if (!/\bproject\b/i.test(prompt) || !fileBlocks.length) return fileBlocks;
+
+    const next = [...fileBlocks];
+    const paths = generatedFilePathSet(next);
+    const entryFile = inferNodeEntryFile(next);
+    const dependencies = inferNodeDependencies(next);
+    const packageBlock = next.find(block => String(block.path ?? '').replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase() === 'package.json');
+
+    if (entryFile && dependencies.length && packageBlock) {
+      mergePackageJsonBlock(packageBlock, entryFile.path, dependencies);
+    } else if (entryFile && dependencies.length && !paths.has('package.json')) {
+      next.push({
+        path: 'package.json',
+        content: `${JSON.stringify({
+          private: true,
+          scripts: {
+            start: `node ${entryFile.path}`,
+          },
+          dependencies: Object.fromEntries(dependencies.map(name => [name, 'latest'])),
+        }, null, 2)}\n`,
+      });
+      paths.add('package.json');
+    }
+
+    if (entryFile && /public/i.test(entryFile.content) && /index\.html/i.test(entryFile.content) && !paths.has('public/index.html')) {
+      next.push({
+        path: 'public/index.html',
+        content: [
+          '<!doctype html>',
+          '<html lang="en">',
+          '<head>',
+          '  <meta charset="utf-8">',
+          '  <meta name="viewport" content="width=device-width, initial-scale=1">',
+          '  <title>Express App</title>',
+          '</head>',
+          '<body>',
+          '  <main>',
+          '    <h1>Express App</h1>',
+          '    <p>The server is running.</p>',
+          '  </main>',
+          '</body>',
+          '</html>',
+          '',
+        ].join('\n'),
+      });
+    }
+
+    return next;
+  }
+
+  async function writeBrowserPodTextFile(path, content) {
+    if (!pod) throw new Error('BrowserPod is not ready.');
+    const directory = parentDirectory(path);
+    if (directory) {
+      await pod.createDirectory(directory, { recursive: true });
+    }
+    let file;
+    try {
+      file = await pod.createFile(path, 'utf-8');
+    } catch {
+      file = await pod.openFile(path, 'utf-8');
+    }
+    try {
+      await file.write(String(content ?? ''));
+    } finally {
+      await file.close().catch(() => {});
+    }
+  }
+
+  async function applyFileBlocks(pane, fileBlocks) {
+    if (!fileBlocks.length || pane.closed) return;
+    const files = fileBlocks.map(block => ({
+      ...normalizeAgentFilePath(block.path),
+      content: block.content,
+    }));
+    const fileList = files.map(file => file.relative).join(', ');
+    const yes = window.confirm(
+      `Write ${files.length} file${files.length === 1 ? '' : 's'} to BrowserPod?\n\n${fileList}`,
+    );
+    if (!yes) {
+      writeHostText(pane, '[ghostty-ai] skipped file writes\r\n');
+      return;
+    }
+
+    const written = [];
+    for (const file of files) {
+      await writeBrowserPodTextFile(file.absolute, file.content);
+      written.push(file.relative);
+      writeHostText(pane, `[ghostty-ai] wrote ${file.relative}\r\n`);
+    }
+    pane.aiMessages = [
+      ...pane.aiMessages,
+      {
+        role: 'user',
+        content: `FILE WRITE RESULT:\n${written.map(file => `wrote ${file}`).join('\n')}`,
+      },
+    ].slice(-16);
+    writeHostText(pane, '[ghostty-ai] file write result added to the conversation\r\n');
+  }
+
+  async function runGhosttyAiCommand(pane, commandLine) {
     pane.hostCommandActive = true;
 
     const rawArgs = commandLine.slice('ghostty-ai'.length).trim();
     const verbMatch = /^(\S+)(?:\s+([\s\S]*))?$/.exec(rawArgs);
     const verb = (verbMatch?.[1] ?? '').toLowerCase();
     const remainder = (verbMatch?.[2] ?? '').trim();
+    let fileBlocksToApply = [];
 
     try {
       if (!rawArgs || verb === 'help' || verb === '--help' || verb === '-h') {
-        writeHostText(pane, `${localModelHelp()}\r\n`);
+        writeHostText(pane, `${agentHelp()}\r\n`);
+        return;
+      }
+
+      if (verb === 'providers') {
+        writeHostText(pane, `${formatProviderList()}\r\n`);
+        return;
+      }
+
+      if (['suggestions', 'commands', 'show', 'discard', 'run'].includes(verb)) {
+        writeHostText(pane, '[ghostty-ai] this command does not run shell commands. Nothing was run.\r\n');
+        return;
+      }
+
+      if (verb === 'setup' || verb === 'key') {
+        const resolvedProvider = resolveProviderId(remainder);
+        if (resolvedProvider === 'local') {
+          const config = saveAgentConfig({ provider: 'local' });
+          forEachPane(candidate => {
+            candidate.aiMessages = [];
+          });
+          writeHostText(pane, `[ghostty-ai] using ${providerSummary(config)}\r\n`);
+          return;
+        }
+        const providerHint = resolvedProvider ? remainder : '';
+        const suppliedKey = providerHint ? '' : remainder;
+        const config = promptForApiConfig(providerHint, suppliedKey);
+        forEachPane(candidate => {
+          candidate.aiMessages = [];
+        });
+        writeHostText(pane, `[ghostty-ai] configured ${providerSummary(config)}\r\n`);
+        return;
+      }
+
+      if (verb === 'use' || verb === 'provider') {
+        if (!remainder) throw new Error('Usage: ghostty-ai use <provider>');
+        const config = switchProvider(remainder);
+        forEachPane(candidate => {
+          candidate.aiMessages = [];
+        });
+        writeHostText(pane, `[ghostty-ai] using ${providerSummary(config)}\r\n`);
+        return;
+      }
+
+      if (verb === 'model') {
+        const config = loadAgentConfig();
+        const provider = resolveProviderId(config.provider) ?? 'local';
+        if (!remainder) {
+          writeHostText(pane, `[ghostty-ai] ${providerSummary(config)}\r\n`);
+          return;
+        }
+        if (provider === 'local') {
+          throw new Error('Local model selection uses `ghostty-ai load <number|model-id>`.');
+        }
+        const next = saveAgentConfig({
+          ...config,
+          model: remainder,
+        });
+        forEachPane(candidate => {
+          candidate.aiMessages = [];
+        });
+        writeHostText(pane, `[ghostty-ai] model set: ${providerSummary(next)}\r\n`);
         return;
       }
 
@@ -2029,7 +2386,9 @@ async function main() {
       }
 
       if (verb === 'status') {
-        writeHostText(pane, `[ghostty-ai] ${localModelRuntime.status}\r\n`);
+        const config = loadAgentConfig();
+        writeHostText(pane, `[ghostty-ai] provider: ${providerSummary(config)}\r\n`);
+        writeHostText(pane, `[ghostty-ai] local runtime: ${localModelRuntime.status}\r\n`);
         writeHostText(pane, `[ghostty-ai] conversation turns: ${Math.floor(pane.aiMessages.length / 2)}\r\n`);
         return;
       }
@@ -2037,6 +2396,15 @@ async function main() {
       if (verb === 'clear') {
         pane.aiMessages = [];
         writeHostText(pane, '[ghostty-ai] conversation cleared\r\n');
+        return;
+      }
+
+      if (verb === 'reset' || (verb === 'config' && remainder === 'reset')) {
+        resetAgentConfig();
+        forEachPane(candidate => {
+          candidate.aiMessages = [];
+        });
+        writeHostText(pane, '[ghostty-ai] API config removed from this browser\r\n');
         return;
       }
 
@@ -2072,40 +2440,60 @@ async function main() {
             candidate.aiMessages = [];
           });
         }
+        saveAgentConfig({ provider: 'local' });
         writeHostText(pane, `\r\x1b[2K[ghostty-ai] ready: ${model.label}\r\n`);
         return;
       }
 
-      let prompt = verb === 'ask' || verb === 'chat' ? remainder : rawArgs;
+      const writeMode = verb === 'write' || verb === 'edit';
+      let prompt = verb === 'ask' || verb === 'chat' || writeMode ? remainder : rawArgs;
       if ((prompt.startsWith('"') && prompt.endsWith('"')) ||
           (prompt.startsWith("'") && prompt.endsWith("'"))) {
         prompt = prompt.slice(1, -1);
       }
-      if (!prompt) throw new Error('Usage: ghostty-ai ask <prompt>');
+      if (!prompt) {
+        throw new Error(writeMode
+          ? 'Usage: ghostty-ai write <prompt>'
+          : 'Usage: ghostty-ai ask <prompt>');
+      }
 
       const controller = new AbortController();
       pane.aiAbortController = controller;
-      const userMessage = { role: 'user', content: prompt };
-      const messages = [...pane.aiMessages.slice(-10), userMessage];
-      const modelLabel = localModelRuntime.loadedModel?.label ?? 'local model';
-      writeHostText(pane, `[${modelLabel}] `);
-      let response = '';
-      response = await localModelRuntime.generate(
-        messages,
-        text => writeModelText(pane, text),
-        controller.signal,
+      const config = loadAgentConfig();
+      writeHostText(pane, `[${providerSummary(config)}] `);
+      const result = await runAgentTurn(
+        {
+          config,
+          localModelRuntime,
+          history: pane.aiMessages,
+          prompt,
+          onText: text => writeModelText(pane, text),
+          signal: controller.signal,
+          allowFileWrites: writeMode,
+        },
       );
       writeHostText(pane, '\r\n');
-      if (!controller.signal.aborted && response) {
-        pane.aiMessages = [
-          ...messages,
-          { role: 'assistant', content: response },
-        ].slice(-12);
+      if (!controller.signal.aborted && result.reply) {
+        pane.aiMessages = result.history;
+        if (writeMode) fileBlocksToApply = maybeCompleteProjectFiles(prompt, result.fileBlocks);
+        if (writeMode && !fileBlocksToApply.length) {
+          writeHostText(pane, '[ghostty-ai] no file artifacts found; no files written\r\n');
+        }
       }
     } catch (error) {
-      const message = error instanceof Error ? error.message : String(error);
-      writeHostText(pane, `\r\n[ghostty-ai error] ${message}\r\n`);
+      const message = error instanceof ProviderError && error.isAuthError
+        ? `${error.message}\r\nRun \`ghostty-ai setup\` to update the saved API key.`
+        : error instanceof Error ? error.message : String(error);
+      if (error?.name !== 'AbortError') {
+        writeHostText(pane, `\r\n[ghostty-ai error] ${message}\r\n`);
+      }
     } finally {
+      try {
+        await applyFileBlocks(pane, fileBlocksToApply);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        writeHostText(pane, `\r\n[ghostty-ai error] ${message}\r\n`);
+      }
       finishHostCommand(pane);
     }
   }
@@ -2118,7 +2506,7 @@ async function main() {
       finishHostCommand(pane);
       return;
     }
-    void runLocalModelCommand(pane, command);
+    void runGhosttyAiCommand(pane, command);
   }
 
   function forwardPaneInput(pane, podTerm, data) {

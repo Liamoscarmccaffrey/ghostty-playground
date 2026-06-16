@@ -342,24 +342,29 @@ Cross-Origin-Opener-Policy: same-origin</code></pre>
   },
   {
     slug: 'local-models',
-    nav: 'Local WebGPU models',
-    title: 'Local WebLLM and WebGPU models',
-    seoTitle: 'Run Local WebGPU Models in Ghostty Playground',
-    description: 'Download supported Hugging Face models at runtime and use local WebLLM inference from the Ghostty Playground terminal.',
-    lead: 'The experimental ghostty-ai command downloads a supported MLC model and runs inference locally in the browser with WebLLM and WebGPU.',
+    nav: 'Ghostty AI',
+    title: 'Ghostty AI providers and local models',
+    seoTitle: 'Use AI Providers and Local WebGPU Models in Ghostty Playground',
+    description: 'Use ghostty-ai with BYOK providers, local WebLLM models, normal chat, and explicit file-writing commands.',
+    lead: 'The ghostty-ai command can chat with BYOK API providers or a local WebGPU model. Normal ask mode is just chat; file writes require an explicit write or scaffold command.',
     content: html`
       <section class="docs-section">
         <h3>Use a local model</h3>
         <div class="docs-code">
           <div class="docs-code-head"><span>Terminal</span><button class="docs-copy" data-copy-target="model-start">Copy</button></div>
-          <pre><code id="model-start">ghostty-ai models
+          <pre><code id="model-start">ghostty-ai providers
+ghostty-ai setup openai
+ghostty-ai models
 ghostty-ai load 5
 ghostty-ai ask Explain file descriptors
 ghostty-ai Give a shorter explanation
+ghostty-ai write Create a README for this project
+ghostty-ai scaffold express express-app
 ghostty-ai status
 ghostty-ai unload</code></pre>
         </div>
-        <p><code>ghostty-ai &lt;prompt&gt;</code> is shorthand for <code>ghostty-ai ask &lt;prompt&gt;</code>. Responses stream into the active terminal pane.</p>
+        <p><code>ghostty-ai &lt;prompt&gt;</code> is shorthand for <code>ghostty-ai ask &lt;prompt&gt;</code>. Ask mode streams normal chat into the active terminal pane and does not write files, install packages, or start servers.</p>
+        <p><code>ghostty-ai write &lt;prompt&gt;</code> is the file-writing mode. It asks before writing file artifacts to BrowserPod. <code>ghostty-ai scaffold express [dir]</code> writes a small Express project and stops there.</p>
       </section>
 
       <section class="docs-section">
@@ -370,7 +375,12 @@ ghostty-ai unload</code></pre>
             <tbody>
               <tr><td><code>ghostty-ai models</code></td><td>List model numbers, names, families, IDs, and approximate download sizes.</td></tr>
               <tr><td><code>ghostty-ai load &lt;number|id&gt;</code></td><td>Download or open the cached model and initialize its WebLLM engine.</td></tr>
+              <tr><td><code>ghostty-ai providers</code></td><td>List local and BYOK API providers.</td></tr>
+              <tr><td><code>ghostty-ai setup &lt;provider&gt;</code></td><td>Store an API key for a provider in this browser's localStorage.</td></tr>
+              <tr><td><code>ghostty-ai use &lt;provider&gt;</code></td><td>Switch between local, OpenAI, Anthropic, OpenRouter, Groq, and Gemini.</td></tr>
               <tr><td><code>ghostty-ai ask &lt;prompt&gt;</code></td><td>Send a prompt using the active pane's conversation history.</td></tr>
+              <tr><td><code>ghostty-ai write &lt;prompt&gt;</code></td><td>Ask for file artifacts and confirm before writing them to BrowserPod.</td></tr>
+              <tr><td><code>ghostty-ai scaffold express [dir]</code></td><td>Create a small Express project. It does not run npm install or npm start.</td></tr>
               <tr><td><code>ghostty-ai status</code></td><td>Show WebGPU, loading, generation, model, and conversation status.</td></tr>
               <tr><td><code>ghostty-ai clear</code></td><td>Clear conversation history for the active pane.</td></tr>
               <tr><td><code>ghostty-ai unload</code></td><td>Unload the model and clear conversations in every pane.</td></tr>
@@ -434,8 +444,8 @@ ghostty-ai unload</code></pre>
 
       <section class="docs-section">
         <h3>How it connects to the terminal</h3>
-        <p>The <code>ghostty-ai</code> shell function passes the command to the host page. WebLLM runs outside BrowserPod, streams generated text to ghostty-web, and then returns control to Bash.</p>
-        <p>The model provides text inference only. It does not execute terminal commands, inspect BrowserPod files, browse the network, or call tools.</p>
+        <p>The <code>ghostty-ai</code> shell function passes the command to the host page. AI responses run outside BrowserPod, stream generated text to ghostty-web, and then return control to Bash.</p>
+        <p><code>ghostty-ai ask</code> provides text chat only. <code>ghostty-ai write</code> can write confirmed file artifacts to BrowserPod. It does not execute install commands, start servers, inspect BrowserPod files, browse the network, or call tools.</p>
       </section>
     `,
   },
