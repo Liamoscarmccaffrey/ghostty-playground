@@ -761,24 +761,23 @@ const HOST_COMMAND_MARKER_PREFIX = new TextEncoder().encode(
 );
 const HOST_COMMAND_MARKER_END = 0x07;
 
-// Define the host-bridge function in an rcfile that the interactive shell
-// sources, rather than `export -f`. Exporting a hyphenated bash function puts
-// a malformed `BASH_FUNC_ghostty-ai%%` entry in the environment, which corrupts
-// the env inherited by child processes (npm/node crash with "this should be
-// unreachable"). Sourcing keeps `ghostty-ai` available at the prompt without
-// polluting the environment.
-const LOCAL_MODEL_SHELL_RCFILE = [
+// Write the host-bridge `ghostty-ai` function to an rcfile that the interactive
+// shell sources, instead of `export -f ghostty-ai`. Exporting a hyphenated bash
+// function puts a malformed `BASH_FUNC_ghostty-ai%%` entry in the environment,
+// which corrupts the env inherited by child processes — npm/node crash with
+// "this should be unreachable". An interactive shell started with --rcfile reads
+// the file (verified: function defined, OSC sequence emitted, env has zero
+// BASH_FUNC entries), so `ghostty-ai` still works at the prompt with a clean env.
+// The heredoc delimiter is quoted ('GHOSTTY_RC') so the body is written verbatim,
+// keeping the \033/\007 escapes literal for printf to expand at call time.
+const LOCAL_MODEL_SHELL_BOOTSTRAP = [
+  "cat > /home/user/.ghostty-airc <<'GHOSTTY_RC'",
   'ghostty-ai() {',
   "  printf '\\033]777;ghostty-ai-ready;raw:%s\\007' \"$*\"",
   '  IFS= read -r _ghostty_ai_resume',
   '}',
-].join('\n');
-
-const LOCAL_MODEL_SHELL_BOOTSTRAP = [
-  `cat > /tmp/.ghostty-airc <<'GHOSTTY_RC'`,
-  LOCAL_MODEL_SHELL_RCFILE,
   'GHOSTTY_RC',
-  'exec bash --rcfile /tmp/.ghostty-airc -i',
+  'exec bash --rcfile /home/user/.ghostty-airc -i',
 ].join('\n');
 
 function findByteSequence(bytes, sequence, start = 0) {
