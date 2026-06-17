@@ -4,7 +4,7 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>Ghostty Playground: Ghostty Online in Your Browser</title>
-    <meta name="description" content="Run Ghostty online with Bash, Node.js and npm in your browser. Learn how BrowserPod handles commands, project files, web servers and Portal URLs." />
+    <meta name="description" content="An unofficial Ghostty playground. Run Ghostty online with Bash, Node.js and npm in your browser. Learn how BrowserPod handles commands, project files, web servers and Portal URLs." />
     <meta name="robots" content="index, follow" />
 
     <!-- Open Graph -->
@@ -13,7 +13,7 @@
     <meta property="og:description" content="Run Ghostty online with Bash, Node.js and npm. BrowserPod provides commands, project files, web servers and Portal URLs inside the browser." />
     <meta property="og:site_name" content="Ghostty Playground" />
     <meta property="og:url" content="https://ghosttyplayground.com/" />
-    <meta property="og:image" content="https://ghosttyplayground.com/og-image.png" />
+    <meta property="og:image" content="https://ghosttyplayground.com/og-image-new.jpg" />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
 
@@ -21,10 +21,10 @@
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="twitter:title" content="Ghostty Playground: Ghostty Online in Your Browser" />
     <meta name="twitter:description" content="Run Ghostty online with Bash, Node.js and npm. BrowserPod provides the browser-hosted command and project environment." />
-    <meta name="twitter:image" content="https://ghosttyplayground.com/og-image.png" />
+    <meta name="twitter:image" content="https://ghosttyplayground.com/og-image-new.jpg" />
 
     <link rel="canonical" href="https://ghosttyplayground.com/" />
-    <link rel="icon" type="image/svg+xml" href="/ghostty-icon.svg" />
+    <link rel="icon" type="image/png" href="/ghostty-icon-small.png" />
     <script type="application/ld+json">
       {
         "@context": "https://schema.org",
@@ -45,7 +45,7 @@
 
       html {
         margin: 0;
-        background: #1a1b26;
+        background: #2E2F9A;
       }
       body {
         margin: 0;
@@ -53,7 +53,7 @@
         flex-direction: column;
         font-family: system-ui, sans-serif;
         color: #a9b1d6;
-        background: #1a1b26;
+        background: #2E2F9A;
       }
 
       header {
@@ -62,11 +62,23 @@
         gap: 12px;
         padding: 0 12px 0 12px;
         font-size: 13px;
+        background: #2E2F9A;
         border-bottom: 1px solid #2a2b3d;
         flex-shrink: 0;
         min-height: 36px;
       }
-      #header-title { opacity: 0.8; flex-shrink: 0; }
+      #header-title {
+        opacity: 0.8;
+        flex-shrink: 0;
+        display: flex;
+        align-items: center;
+        gap: 6px;
+      }
+      #header-logo {
+        width: 18px;
+        height: 18px;
+        display: block;
+      }
 
       #tab-bar {
         display: flex;
@@ -200,7 +212,7 @@
       }
 
       #page-content {
-        background: #13141f;
+        background: #2E2F9A;
         border-top: 1px solid #242536;
         min-height: 900px;
       }
@@ -277,7 +289,7 @@
         min-height: 240px;
         max-height: 60vh;
         border-top: 1px solid #2a2b3d;
-        background: #13141f;
+        background: #2E2F9A;
         display: none;
         flex-direction: column;
         font-size: 12px;
@@ -507,7 +519,7 @@
       }
       #title-input {
         width: 100%;
-        background: #13141f;
+        background: #2E2F9A;
         border: 1px solid #2a2b3d;
         border-radius: 4px;
         color: #c0caf5;
@@ -523,7 +535,7 @@
         margin-bottom: 14px;
         border: 1px solid #2a2b3d;
         border-radius: 4px;
-        background: #13141f;
+        background: #2E2F9A;
         min-height: 260px;
       }
       #config-editor-wrap:focus-within { border-color: #7aa2f7; }
@@ -930,7 +942,7 @@
         font-family: ui-monospace, 'SF Mono', monospace;
         font-size: 11px;
         color: #7aa2f7;
-        background: #13141f;
+        background: #2E2F9A;
         border: 1px solid #2a2b3d;
         border-radius: 3px;
         padding: 2px 7px;
@@ -951,7 +963,7 @@
       }
       #about-modal.visible { display: flex; }
       #about-box {
-        background: #13141f;
+        background: #2E2F9A;
         border: 1px solid #2a2b3d;
         border-radius: 10px;
         box-shadow: 0 24px 64px rgba(0,0,0,0.8);
@@ -1150,7 +1162,10 @@
   </head>
   <body>
     <header>
-      <span id="header-title">ghostty-web</span>
+      <span id="header-title">
+        <img id="header-logo" src="/ghostty-icon-small.png" alt="" />
+        Ghostty Playground
+      </span>
       <div id="tab-bar"></div>
     </header>
 
@@ -1312,7 +1327,7 @@
     <section id="page-content" aria-labelledby="docs-title">
       <header class="docs-header">
         <div class="docs-header-title">
-          <img src="/ghostty-wordmark.svg" alt="Ghostty" />
+          <img src="/ghostty-icon-small.png" alt="Ghostty" />
           <div>
             <h1 id="docs-title">Ghostty Playground</h1>
             <p>Documentation for the Ghostty browser terminal, BrowserPod runtime, Node.js, npm, project files, Portals, and Ghostty AI.</p>

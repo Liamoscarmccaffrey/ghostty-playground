@@ -17,7 +17,7 @@ cursor-style-blink = true
 # shell-prompt = user@host ~ %
 
 # Theme — any name from the Ghostty theme catalogue
-theme = TokyoNight
+theme = Carbonfox
 
 # Manual color overrides (applied on top of any named theme)
 # background = #1a1b26
